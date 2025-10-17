@@ -100,6 +100,23 @@
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
 
+### Non-Functional Requirements *(mandatory for constitution compliance)*
+
+**Performance Requirements**:
+- **NFR-001**: API responses MUST complete within 500ms for 95th percentile
+- **NFR-002**: Page loads MUST complete within 2 seconds on 3G connections
+- **NFR-003**: [Specific performance requirement relevant to feature]
+
+**User Experience Requirements**:
+- **NFR-004**: All interactive elements MUST provide consistent interaction patterns
+- **NFR-005**: Loading states MUST be provided for all asynchronous operations >200ms
+- **NFR-006**: Components MUST meet WCAG 2.1 AA accessibility standards
+
+**Quality Requirements**:
+- **NFR-007**: Feature MUST achieve minimum 80% test coverage
+- **NFR-008**: All user journeys MUST have integration test coverage
+- **NFR-009**: Code MUST pass automated quality gates (linting, formatting, static analysis)
+
 ## Success Criteria *(mandatory)*
 
 <!--

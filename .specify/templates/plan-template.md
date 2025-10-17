@@ -31,7 +31,28 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+**Code Quality Standards**:
+- [ ] Static analysis and linting tools specified
+- [ ] Code formatting standards defined
+- [ ] Code review process documented
+
+**Testing Requirements**:
+- [ ] TDD approach confirmed (tests before implementation)
+- [ ] Minimum 80% code coverage target set
+- [ ] Integration test strategy defined for critical user journeys
+
+**User Experience Consistency**:
+- [ ] Reusable component strategy planned
+- [ ] Accessibility requirements (WCAG 2.1 AA) included
+- [ ] Performance feedback patterns specified
+
+**Performance Requirements**:
+- [ ] API response time thresholds defined (500ms 95th percentile)
+- [ ] Page load performance targets set (2s on 3G)
+- [ ] Performance monitoring strategy planned
+
+**Violations requiring justification**:
+[Document any constitution principle violations with technical rationale and remediation timeline]
 
 ## Project Structure
 

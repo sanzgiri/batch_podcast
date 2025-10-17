@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: development
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - DATABASE_URL=sqlite:///./data/app.db
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ../src:/app/src
+      - ../config:/app/config
+      - ../data:/app/data
+      - ../logs:/app/logs
+    depends_on:
+      - redis
+    networks:
+      - newsletter-podcast
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - newsletter-podcast
+
+  # Optional: Local MinIO for S3-compatible storage testing
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - newsletter-podcast
+
+  # Optional: Local Ollama for LLM testing
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - newsletter-podcast
+
+volumes:
+  redis_data:
+  minio_data:
+  ollama_data:
+
+networks:
+  newsletter-podcast:
+    driver: bridge

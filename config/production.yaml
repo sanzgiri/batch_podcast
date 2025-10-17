@@ -1,0 +1,80 @@
+# Production Configuration
+app:
+  name: "Newsletter Podcast Generator"
+  version: "0.1.0"
+  debug: false
+  environment: "production"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: false
+  log_level: "INFO"
+  workers: 4
+
+database:
+  url: "${DATABASE_URL}"
+  echo: false
+  pool_size: 20
+  max_overflow: 30
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "/app/logs/app.log"
+  max_bytes: 52428800  # 50MB
+  backup_count: 10
+
+ai_services:
+  llm:
+    provider: "${LLM_PROVIDER:-openai}"
+    ollama:
+      base_url: "${OLLAMA_BASE_URL}"
+      model: "${OLLAMA_MODEL:-llama2}"
+      timeout: 300
+    openai:
+      api_key: "${OPENAI_API_KEY}"
+      model: "${OPENAI_MODEL:-gpt-3.5-turbo}"
+      max_tokens: 2000
+
+  tts:
+    provider: "${TTS_PROVIDER:-unreal_speech}"
+    kokoro:
+      base_url: "${KOKORO_BASE_URL}"
+      voice: "${KOKORO_VOICE:-default}"
+    unreal_speech:
+      api_key: "${UNREAL_SPEECH_API_KEY}"
+      voice: "${UNREAL_SPEECH_VOICE:-Scarlett}"
+
+storage:
+  type: "${STORAGE_TYPE:-s3}"
+  local:
+    upload_dir: "/app/data/uploads"
+    audio_dir: "/app/data/audio"
+  s3:
+    bucket: "${S3_BUCKET}"
+    access_key: "${AWS_ACCESS_KEY_ID}"
+    secret_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "${AWS_REGION}"
+    endpoint_url: "${S3_ENDPOINT_URL}"
+
+podcast:
+  title: "${PODCAST_TITLE:-Newsletter Podcast}"
+  description: "${PODCAST_DESCRIPTION:-Automated podcast from newsletter content}"
+  author: "${PODCAST_AUTHOR:-Newsletter Podcast Generator}"
+  email: "${PODCAST_EMAIL}"
+  language: "${PODCAST_LANGUAGE:-en-us}"
+  category: "${PODCAST_CATEGORY:-News}"
+  image_url: "${PODCAST_IMAGE_URL}"
+  base_url: "${PODCAST_BASE_URL}"
+
+performance:
+  max_concurrent_jobs: "${MAX_CONCURRENT_JOBS:-5}"
+  job_timeout: "${JOB_TIMEOUT:-600}"
+  retry_attempts: "${RETRY_ATTEMPTS:-3}"
+  retry_delay: "${RETRY_DELAY:-5}"
+
+security:
+  api_key_header: "X-API-Key"
+  allowed_hosts: "${ALLOWED_HOSTS:-localhost,127.0.0.1}"
+  cors_origins: "${CORS_ORIGINS}"

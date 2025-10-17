@@ -47,7 +47,9 @@ description: "Task list template for feature implementation"
 
 - [ ] T001 Create project structure per implementation plan
 - [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T003 [P] Configure linting and formatting tools (CONSTITUTION REQUIRED)
+- [ ] T004 [P] Setup code quality gates and pre-commit hooks (CONSTITUTION REQUIRED)
+- [ ] T005 [P] Configure test coverage reporting (CONSTITUTION REQUIRED)
 
 ---
 
@@ -59,12 +61,14 @@ description: "Task list template for feature implementation"
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T006 Setup database schema and migrations framework
+- [ ] T007 [P] Implement authentication/authorization framework
+- [ ] T008 [P] Setup API routing and middleware structure
+- [ ] T009 Create base models/entities that all stories depend on
+- [ ] T010 Configure error handling and logging infrastructure
+- [ ] T011 Setup environment configuration management
+- [ ] T012 [P] Implement performance monitoring infrastructure (CONSTITUTION REQUIRED)
+- [ ] T013 [P] Setup accessibility testing framework (CONSTITUTION REQUIRED)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -76,9 +80,9 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 1 (REQUIRED per CONSTITUTION) ⚠️
 
-**NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+**NOTE: TDD is MANDATORY per constitution - Write these tests FIRST, ensure they FAIL before implementation**
 
 - [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
 - [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py

@@ -1,0 +1,628 @@
+openapi: 3.0.3
+info:
+  title: Newsletter to Podcast Generator API
+  description: API for converting newsletter content into podcast episodes
+  version: 1.0.0
+  contact:
+    name: Newsletter Podcast Generator
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: https://api.newsletter-podcast.com/v1
+    description: Production server
+
+paths:
+  /newsletters:
+    post:
+      summary: Submit newsletter content for processing
+      description: Create a new newsletter entry and start processing pipeline
+      operationId: submit_newsletter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewsletterSubmission'
+      responses:
+        '201':
+          description: Newsletter submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Newsletter'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Duplicate content (already processed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      summary: List newsletters
+      description: Retrieve list of submitted newsletters with pagination
+      operationId: list_newsletters
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, processing, completed, failed]
+      responses:
+        '200':
+          description: List of newsletters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterList'
+
+  /newsletters/{newsletter_id}:
+    get:
+      summary: Get newsletter by ID
+      description: Retrieve specific newsletter with processing status
+      operationId: get_newsletter
+      parameters:
+        - name: newsletter_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Newsletter details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Newsletter'
+        '404':
+          description: Newsletter not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /newsletters/{newsletter_id}/retry:
+    post:
+      summary: Retry failed newsletter processing
+      description: Restart processing for a failed newsletter
+      operationId: retry_newsletter
+      parameters:
+        - name: newsletter_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Processing restart initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Newsletter'
+        '400':
+          description: Newsletter not in failed state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Newsletter not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /episodes:
+    get:
+      summary: List episodes
+      description: Retrieve list of generated episodes with pagination
+      operationId: list_episodes
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, generating_audio, uploading, published, failed]
+      responses:
+        '200':
+          description: List of episodes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpisodeList'
+
+  /episodes/{episode_id}:
+    get:
+      summary: Get episode by ID
+      description: Retrieve specific episode with metadata and status
+      operationId: get_episode
+      parameters:
+        - name: episode_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Episode details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Episode'
+        '404':
+          description: Episode not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /episodes/{episode_id}/download:
+    get:
+      summary: Download episode audio
+      description: Get direct download link for episode MP3 file
+      operationId: download_episode
+      parameters:
+        - name: episode_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '302':
+          description: Redirect to audio file URL
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '404':
+          description: Episode or audio file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Audio not yet generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /feed:
+    get:
+      summary: Get RSS podcast feed
+      description: Retrieve RSS feed XML for podcast subscription
+      operationId: get_podcast_feed
+      responses:
+        '200':
+          description: RSS feed XML
+          content:
+            application/xml:
+              schema:
+                type: string
+            application/rss+xml:
+              schema:
+                type: string
+        '404':
+          description: Feed not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /feed/config:
+    get:
+      summary: Get podcast feed configuration
+      description: Retrieve current podcast feed settings
+      operationId: get_feed_config
+      responses:
+        '200':
+          description: Feed configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PodcastFeed'
+        '404':
+          description: Feed not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update podcast feed configuration
+      description: Update podcast feed metadata and settings
+      operationId: update_feed_config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PodcastFeedUpdate'
+      responses:
+        '200':
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PodcastFeed'
+        '400':
+          description: Invalid configuration data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /config/services:
+    get:
+      summary: Get service configuration
+      description: Retrieve current AI service provider settings
+      operationId: get_service_config
+      responses:
+        '200':
+          description: Service configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceConfig'
+
+    put:
+      summary: Update service configuration
+      description: Update AI service provider preferences
+      operationId: update_service_config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceConfigUpdate'
+      responses:
+        '200':
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceConfig'
+        '400':
+          description: Invalid configuration data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      summary: Health check
+      description: Check API and service health status
+      operationId: health_check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+components:
+  schemas:
+    NewsletterSubmission:
+      type: object
+      required:
+        - content
+      properties:
+        title:
+          type: string
+          maxLength: 500
+          description: Newsletter title/subject
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Source URL (if extracting from web)
+        content:
+          type: string
+          minLength: 100
+          maxLength: 50000
+          description: Newsletter text content
+        publication_date:
+          type: string
+          format: date-time
+          description: Original publication date
+
+    Newsletter:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        content:
+          type: string
+        extracted_content:
+          type: string
+        publication_date:
+          type: string
+          format: date-time
+        submitted_at:
+          type: string
+          format: date-time
+        content_hash:
+          type: string
+        word_count:
+          type: integer
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        episodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Episode'
+
+    NewsletterList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Newsletter'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    Episode:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        newsletter_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        summary_text:
+          type: string
+        audio_url:
+          type: string
+          format: uri
+        duration_seconds:
+          type: integer
+        file_size_bytes:
+          type: integer
+        publication_date:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft, generating_audio, uploading, published, failed]
+        llm_service_used:
+          type: string
+        tts_service_used:
+          type: string
+
+    EpisodeList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Episode'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    PodcastFeed:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        author:
+          type: string
+        email:
+          type: string
+          format: email
+        language:
+          type: string
+        category:
+          type: string
+        image_url:
+          type: string
+          format: uri
+        website_url:
+          type: string
+          format: uri
+        rss_url:
+          type: string
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_build_date:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+
+    PodcastFeedUpdate:
+      type: object
+      required:
+        - title
+        - description
+        - author
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+        author:
+          type: string
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        language:
+          type: string
+          maxLength: 10
+        category:
+          type: string
+          maxLength: 100
+        image_url:
+          type: string
+          format: uri
+          maxLength: 2048
+        website_url:
+          type: string
+          format: uri
+          maxLength: 2048
+
+    ServiceConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        llm_provider:
+          type: string
+          enum: [openai, ollama]
+        llm_config:
+          type: object
+        tts_provider:
+          type: string
+          enum: [unreal_speech, kokoro, chatterbox]
+        tts_config:
+          type: object
+        storage_provider:
+          type: string
+          enum: [s3, gcs, local]
+        storage_config:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+
+    ServiceConfigUpdate:
+      type: object
+      properties:
+        llm_provider:
+          type: string
+          enum: [openai, ollama]
+        llm_config:
+          type: object
+        tts_provider:
+          type: string
+          enum: [unreal_speech, kokoro, chatterbox]
+        tts_config:
+          type: object
+        storage_provider:
+          type: string
+          enum: [s3, gcs, local]
+        storage_config:
+          type: object
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [healthy, unhealthy]
+            llm_service:
+              type: string
+              enum: [healthy, unhealthy, not_configured]
+            tts_service:
+              type: string
+              enum: [healthy, unhealthy, not_configured]
+            storage:
+              type: string
+              enum: [healthy, unhealthy, not_configured]
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time

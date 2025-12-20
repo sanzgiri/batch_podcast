@@ -1,0 +1,34 @@
+# Newsletter Configuration
+# Active newsletter profiles for automated processing
+
+newsletters:
+  # DeepLearning.AI's The Batch newsletter
+  the-batch:
+    name: "The Batch - AI News by DeepLearning.AI"
+    enabled: true
+    rss_feed: "https://www.deeplearning.ai/the-batch/feed/"
+    url_pattern: "https://www.deeplearning.ai/the-batch/issue-*"
+
+    processing:
+      length: "long"              # long format for comprehensive coverage
+      style: "conversational"
+      focus_areas: []
+
+    output:
+      folder: "the-batch"
+      naming_template: "{slug}-{date}-issue-{issue}"
+
+    podcast_metadata:
+      title: "The Batch Podcast"
+      description: "AI news from DeepLearning.AI converted to audio format"
+      author: "Andrew Ng / DeepLearning.AI"
+      email: "thebatch@deeplearning.ai"
+      category: "Technology"
+      language: "en-us"
+      image_url: ""
+      website_url: "https://www.deeplearning.ai/the-batch/"
+
+    extraction:
+      issue_number:
+        pattern: "issue-(\\d+)"
+        source: "url"

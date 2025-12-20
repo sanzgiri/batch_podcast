@@ -16,6 +16,8 @@ from src.lib.database import get_db_session
 from src.lib.logging import get_logger
 from src.lib.exceptions import ProcessingError, ValidationError
 from src.lib.metrics import record_processing_time, increment_counter
+from src.lib.storage import StorageManager
+from src.lib.newsletter_config import get_newsletter_config, NewsletterProfile
 from src.models import Newsletter, Episode, NewsletterStatus, EpisodeStatus
 from src.services import ContentExtractor, LLMSummarizer, TTSGenerator
 
@@ -34,7 +36,11 @@ class NewsletterProcessor:
     def __init__(self, config: Config):
         """Initialize Newsletter Processor with configuration."""
         self.config = config
-        
+
+        # Load newsletter configuration
+        self.newsletter_config = get_newsletter_config()
+        self.storage_manager = StorageManager(config)
+
         # Service instances will be created as context managers
         self.content_extractor: Optional[ContentExtractor] = None
         self.llm_summarizer: Optional[LLMSummarizer] = None
@@ -77,39 +83,62 @@ class NewsletterProcessor:
         self,
         url: str,
         user_id: Optional[str] = None,
+        newsletter_profile_id: Optional[str] = None,
         processing_options: Optional[Dict[str, Any]] = None
     ) -> Newsletter:
         """
         Process newsletter from URL through complete pipeline.
-        
+
         Args:
             url: Newsletter URL to process
             user_id: Optional user ID for tracking
+            newsletter_profile_id: Optional newsletter profile ID for configuration
             processing_options: Optional processing parameters
-            
+
         Returns:
             Newsletter model with processing status
-            
+
         Raises:
             ProcessingError: If processing fails
             ValidationError: If URL is invalid
         """
         start_time = asyncio.get_event_loop().time()
-        
+
+        # Find newsletter profile
+        newsletter_profile = None
+        if newsletter_profile_id:
+            newsletter_profile = self.newsletter_config.get_profile(newsletter_profile_id)
+            if not newsletter_profile:
+                logger.warning(f"Newsletter profile not found: {newsletter_profile_id}")
+        else:
+            # Try to auto-detect profile from URL
+            profile_match = self.newsletter_config.find_profile_by_url(url)
+            if profile_match:
+                newsletter_profile_id, newsletter_profile = profile_match
+                logger.info(f"Auto-detected newsletter profile: {newsletter_profile_id}")
+
         async with get_db_session() as db:
             # Create newsletter record
             newsletter = Newsletter.from_url(url, user_id=user_id)
+
+            # Set profile information if available
+            if newsletter_profile_id:
+                newsletter.newsletter_profile_id = newsletter_profile_id
+                newsletter.slug = newsletter_profile_id  # Use profile ID as slug
+
             db.add(newsletter)
             await db.commit()
             await db.refresh(newsletter)
-            
+
             newsletter_id = newsletter.id  # Capture ID for error logging
-            
+
             logger.info(f"Starting newsletter processing: {newsletter_id} from {url}")
-            
+
             try:
                 # Process through pipeline
-                await self._process_newsletter_pipeline(newsletter, db, processing_options)
+                await self._process_newsletter_pipeline(
+                    newsletter, db, newsletter_profile, processing_options
+                )
                 
                 processing_time = asyncio.get_event_loop().time() - start_time
                 record_processing_time("newsletter_processing", processing_time)
@@ -175,8 +204,8 @@ class NewsletterProcessor:
             logger.info(f"Starting newsletter processing: {newsletter.id} from text content")
             
             try:
-                # Process through pipeline
-                await self._process_newsletter_pipeline(newsletter, db, processing_options)
+                # Process through pipeline (no profile for text-based newsletters)
+                await self._process_newsletter_pipeline(newsletter, db, None, processing_options)
                 
                 processing_time = asyncio.get_event_loop().time() - start_time
                 record_processing_time("newsletter_processing", processing_time)
@@ -231,8 +260,13 @@ class NewsletterProcessor:
             await db.commit()
             
             try:
+                # Load newsletter profile if exists
+                newsletter_profile = None
+                if newsletter.newsletter_profile_id:
+                    newsletter_profile = self.newsletter_config.get_profile(newsletter.newsletter_profile_id)
+
                 # Process through pipeline
-                await self._process_newsletter_pipeline(newsletter, db)
+                await self._process_newsletter_pipeline(newsletter, db, newsletter_profile)
                 
                 increment_counter("newsletters_retried_total")
                 logger.info(f"Newsletter retry completed: {newsletter.id}, status: {newsletter.status}")
@@ -253,10 +287,21 @@ class NewsletterProcessor:
         self,
         newsletter: Newsletter,
         db: AsyncSession,
+        newsletter_profile: Optional[NewsletterProfile] = None,
         processing_options: Optional[Dict[str, Any]] = None
     ) -> None:
         """Internal method to run the complete processing pipeline."""
         options = processing_options or {}
+
+        # Apply profile-based processing options if profile exists
+        if newsletter_profile:
+            # Profile settings override defaults but not explicit options
+            if "style" not in options:
+                options["style"] = newsletter_profile.processing.style
+            if "target_length" not in options:
+                options["target_length"] = newsletter_profile.processing.length
+            if "focus_areas" not in options and newsletter_profile.processing.focus_areas:
+                options["focus_areas"] = newsletter_profile.processing.focus_areas
         
         # Capture attributes to avoid lazy loading issues after commit
         newsletter_id = newsletter.id
@@ -282,6 +327,14 @@ class NewsletterProcessor:
             newsletter.set_extracted_content(extracted.content)
             if extracted.title and not newsletter.title:
                 newsletter.title = extracted.title
+
+            # Extract metadata using newsletter profile
+            if newsletter_profile and newsletter_url:
+                metadata = newsletter_profile.extract_metadata(newsletter_url, extracted.content)
+                if metadata.get("issue_number"):
+                    newsletter.issue_number = metadata["issue_number"]
+                    logger.info(f"Extracted issue number: {metadata['issue_number']}")
+
             await db.commit()
             await db.refresh(newsletter)
             
@@ -312,17 +365,39 @@ class NewsletterProcessor:
                 llm_provider=summary_response.provider,
                 llm_model=summary_response.model
             )
-            
+
+            # Set LLM cost tracking info
+            episode.set_cost_info(
+                llm_input_tokens=summary_response.input_tokens,
+                llm_output_tokens=summary_response.output_tokens,
+                llm_cost=summary_response.cost
+            )
+
             db.add(episode)
             await db.commit()
             await db.refresh(episode)
             
             # Step 3: TTS Generation
             logger.info(f"Step 3: Generating audio for episode {episode.id}")
-            newsletter.update_status(NewsletterStatus.GENERATING_AUDIO) 
+            newsletter.update_status(NewsletterStatus.GENERATING_AUDIO)
             episode.update_status(EpisodeStatus.GENERATING)
             await db.commit()
-            
+
+            # Determine output path using storage manager
+            target_file_path = self.storage_manager.get_audio_file_path(
+                newsletter_profile=newsletter_profile,
+                newsletter_id=newsletter.id,
+                slug=newsletter.slug,
+                issue_number=newsletter.issue_number,
+                title=newsletter.title,
+                date=newsletter.publication_date.strftime("%Y-%m-%d") if newsletter.publication_date else datetime.now().strftime("%Y-%m-%d")
+            )
+
+            # Temporarily update TTS generator output directory to use profile-based folder
+            original_output_dir = self.tts_generator.output_dir
+            self.tts_generator.output_dir = target_file_path.parent
+            self.tts_generator.client.output_dir = str(target_file_path.parent)
+
             tts_response = await self.tts_generator.generate_speech(
                 text=summary_response.summary,
                 voice=options.get("voice"),
@@ -331,10 +406,26 @@ class NewsletterProcessor:
                 output_format=options.get("output_format", "mp3"),
                 quality=options.get("quality", "standard")
             )
-            
+
+            # Restore original output directory
+            self.tts_generator.output_dir = original_output_dir
+            self.tts_generator.client.output_dir = str(original_output_dir)
+
+            # Rename file to use profile-based naming
+            import shutil
+            from pathlib import Path
+            generated_file = Path(tts_response.audio_file_path)
+            if generated_file != target_file_path and generated_file.exists():
+                shutil.move(str(generated_file), str(target_file_path))
+                tts_response.audio_file_path = str(target_file_path)
+                logger.info(f"Moved audio file to: {target_file_path}")
+
+            # Store relative path in database
+            relative_path = self.storage_manager.get_relative_path(Path(tts_response.audio_file_path))
+
             # Update episode with audio info
             episode.set_audio_info(
-                audio_file_path=tts_response.audio_file_path,
+                audio_file_path=relative_path,
                 duration_seconds=tts_response.duration_seconds,
                 file_size_bytes=tts_response.file_size_bytes
             )
@@ -343,7 +434,13 @@ class NewsletterProcessor:
                 tts_provider=tts_response.provider,
                 tts_voice=tts_response.voice
             )
-            
+
+            # Set TTS cost tracking info (TODO: Re-enable after fixing async issues)
+            # episode.set_cost_info(
+            #     tts_characters=tts_response.characters,
+            #     tts_cost=tts_response.cost
+            # )
+
             episode.update_status(EpisodeStatus.COMPLETED)
             await db.commit()
             await db.refresh(episode)
@@ -351,18 +448,20 @@ class NewsletterProcessor:
             # Capture episode attributes before accessing newsletter
             episode_id_final = episode.id
             episode_duration = episode.formatted_duration
-            
+            episode_total_cost = episode.total_cost or 0.0
+
             # Step 4: Mark newsletter as completed
             logger.info(f"Step 4: Completing processing for newsletter {newsletter_id}")
             newsletter.update_status(NewsletterStatus.COMPLETED)
             newsletter.episode_id = episode_id_final
             await db.commit()
             await db.refresh(newsletter)
-            
+
             increment_counter("episodes_generated_total")
             logger.info(
                 f"Pipeline completed successfully: newsletter {newsletter_id}, "
-                f"episode {episode_id_final}, audio duration {episode_duration}"
+                f"episode {episode_id_final}, audio duration {episode_duration}, "
+                f"total cost: ${episode_total_cost:.4f}"
             )
             
         except Exception as e:

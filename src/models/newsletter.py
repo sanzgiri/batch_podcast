@@ -54,6 +54,11 @@ class Newsletter(Base):
     submitted_at = Column(DateTime(timezone=True), nullable=False, default=now_utc)
     content_hash = Column(String(64), nullable=False, unique=True, index=True)
     word_count = Column(Integer, nullable=False, default=0)
+
+    # Newsletter profile fields
+    newsletter_profile_id = Column(String(100), nullable=True, index=True)  # e.g., "the-batch"
+    issue_number = Column(String(50), nullable=True)  # e.g., "323"
+    slug = Column(String(100), nullable=True)  # e.g., "the-batch"
     
     # Processing status
     status = Column(
@@ -139,6 +144,9 @@ class Newsletter(Base):
             "submitted_at": self.submitted_at.isoformat(),
             "content_hash": self.content_hash,
             "word_count": self.word_count,
+            "newsletter_profile_id": self.newsletter_profile_id,
+            "issue_number": self.issue_number,
+            "slug": self.slug,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat()

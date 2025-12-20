@@ -35,13 +35,14 @@ def cli():
 
 @cli.command()
 @click.argument("url")
+@click.option("--newsletter", "newsletter_profile_id", help="Newsletter profile ID (e.g., 'the-batch')")
 @click.option("--user-id", help="User ID for tracking")
-@click.option("--style", default="conversational", 
+@click.option("--style", default=None,
               type=click.Choice(["conversational", "formal", "casual"]),
-              help="Summary style")
-@click.option("--length", "target_length", default="medium",
+              help="Summary style (overrides profile setting)")
+@click.option("--length", "target_length", default=None,
               type=click.Choice(["short", "medium", "long"]),
-              help="Target summary length")
+              help="Target summary length (overrides profile setting)")
 @click.option("--voice", help="TTS voice (provider-specific)")
 @click.option("--speed", default=1.0, type=float, help="Speech speed (0.5-2.0)")
 @click.option("--pitch", default=1.0, type=float, help="Speech pitch (0.5-2.0)")
@@ -56,9 +57,10 @@ def cli():
 @click.option("--wait", is_flag=True, help="Wait for processing to complete")
 def process_url(
     url: str,
+    newsletter_profile_id: Optional[str],
     user_id: Optional[str],
-    style: str,
-    target_length: str,
+    style: Optional[str],
+    target_length: Optional[str],
     voice: Optional[str],
     speed: float,
     pitch: float,
@@ -79,22 +81,27 @@ def process_url(
         console.print("[red]Error: Pitch must be between 0.5 and 2.0[/red]")
         sys.exit(1)
     
-    # Prepare processing options
+    # Prepare processing options (only include explicitly set values)
     processing_options = {
-        "style": style,
-        "target_length": target_length,
         "voice": voice,
         "speed": speed,
         "pitch": pitch,
         "output_format": output_format,
         "quality": quality,
-        "focus_areas": list(focus_areas) if focus_areas else None
     }
-    
+
+    # Only add style and length if explicitly set (don't override profile defaults)
+    if style is not None:
+        processing_options["style"] = style
+    if target_length is not None:
+        processing_options["target_length"] = target_length
+    if focus_areas:
+        processing_options["focus_areas"] = list(focus_areas)
+
     # Run processing
     try:
         newsletter = asyncio.run(_process_newsletter_url_async(
-            url, user_id, processing_options, wait
+            url, user_id, newsletter_profile_id, processing_options, wait
         ))
         
         if newsletter:
@@ -272,12 +279,13 @@ def voices():
 async def _process_newsletter_url_async(
     url: str,
     user_id: Optional[str],
+    newsletter_profile_id: Optional[str],
     processing_options: dict,
     wait: bool
 ):
     """Process newsletter from URL asynchronously."""
     config = get_config()
-    
+
     async with NewsletterProcessor(config) as processor:
         if wait:
             with Progress(
@@ -286,13 +294,14 @@ async def _process_newsletter_url_async(
                 console=console
             ) as progress:
                 task = progress.add_task("Processing newsletter...", total=None)
-                
+
                 newsletter = await processor.process_newsletter_from_url(
                     url=url,
                     user_id=user_id,
+                    newsletter_profile_id=newsletter_profile_id,
                     processing_options=processing_options
                 )
-                
+
                 progress.update(task, description="Processing completed!")
                 return newsletter
         else:
@@ -300,9 +309,10 @@ async def _process_newsletter_url_async(
             newsletter = await processor.process_newsletter_from_url(
                 url=url,
                 user_id=user_id,
+                newsletter_profile_id=newsletter_profile_id,
                 processing_options=processing_options
             )
-            
+
             console.print(f"[green]Newsletter submitted for processing: {newsletter.id}[/green]")
             console.print("Use 'batch-podcast status <id>' to check progress")
             return None
@@ -503,6 +513,11 @@ def _display_available_voices(voices):
         console.print(table)
     else:
         console.print("[yellow]No voices available[/yellow]")
+
+
+# Add cost commands subgroup
+from src.cli.cost_commands import costs
+cli.add_command(costs)
 
 
 if __name__ == "__main__":

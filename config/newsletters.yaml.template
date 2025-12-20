@@ -1,0 +1,67 @@
+# Newsletter Configuration
+# This file defines newsletter profiles for automated processing
+# Copy this to newsletters.yaml and configure your newsletters
+
+newsletters:
+  # Example: DeepLearning.AI's The Batch newsletter
+  the-batch:
+    name: "The Batch - AI News by DeepLearning.AI"
+    enabled: true
+
+    # RSS feed URL for auto-discovery of episodes
+    rss_feed: "https://www.deeplearning.ai/the-batch/feed/"
+
+    # URL pattern for matching (supports wildcards)
+    url_pattern: "https://www.deeplearning.ai/the-batch/issue-*"
+
+    # Processing settings
+    processing:
+      length: "long"              # Options: short (5-7min), medium (10-15min), long (20-30min)
+      style: "conversational"     # Options: conversational, formal, casual
+      focus_areas: []             # Optional: list of topics to emphasize
+
+    # Output configuration
+    output:
+      folder: "the-batch"                           # Subfolder in data/audio/
+      naming_template: "{slug}-{date}-issue-{issue}" # Filename template
+      # Available variables: {slug}, {date}, {datetime}, {issue}, {title}, {id}
+
+    # Podcast metadata (for RSS feeds and ID3 tags)
+    podcast_metadata:
+      title: "The Batch Podcast"
+      description: "AI news from DeepLearning.AI converted to audio format"
+      author: "Andrew Ng / DeepLearning.AI"
+      email: "thebatch@deeplearning.ai"
+      category: "Technology"
+      language: "en-us"
+      image_url: ""  # Optional: podcast cover art URL
+      website_url: "https://www.deeplearning.ai/the-batch/"
+
+    # Metadata extraction patterns (regex patterns to extract info from URLs/content)
+    extraction:
+      issue_number:
+        pattern: "issue-(\\d+)"   # Extract from URL
+        source: "url"
+      date:
+        pattern: null             # Auto-detect from content
+        source: "content"
+
+  # Example: Another newsletter
+  # tech-weekly:
+  #   name: "Tech Weekly Digest"
+  #   enabled: false
+  #   url_pattern: "https://example.com/tech-weekly/*"
+  #
+  #   processing:
+  #     length: "medium"
+  #     style: "casual"
+  #
+  #   output:
+  #     folder: "tech-weekly"
+  #     naming_template: "{slug}-{date}"
+  #
+  #   podcast_metadata:
+  #     title: "Tech Weekly Podcast"
+  #     description: "Your weekly tech digest"
+  #     author: "Tech Weekly Team"
+  #     category: "Technology"

@@ -64,7 +64,16 @@ class Episode(Base):
     llm_model = Column(String(100), nullable=True)
     tts_provider = Column(String(50), nullable=True)
     tts_voice = Column(String(100), nullable=True)
-    
+
+    # Cost tracking
+    llm_input_tokens = Column(Integer, nullable=True)
+    llm_output_tokens = Column(Integer, nullable=True)
+    llm_total_tokens = Column(Integer, nullable=True)
+    llm_cost = Column(Float, nullable=True)
+    tts_characters = Column(Integer, nullable=True)
+    tts_cost = Column(Float, nullable=True)
+    total_cost = Column(Float, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at = Column(
@@ -165,7 +174,33 @@ class Episode(Base):
         if tts_voice is not None:
             self.tts_voice = tts_voice
         self.updated_at = now_utc()
-    
+
+    def set_cost_info(
+        self,
+        llm_input_tokens: Optional[int] = None,
+        llm_output_tokens: Optional[int] = None,
+        llm_cost: Optional[float] = None,
+        tts_characters: Optional[int] = None,
+        tts_cost: Optional[float] = None
+    ) -> None:
+        """Set cost tracking information."""
+        if llm_input_tokens is not None:
+            self.llm_input_tokens = llm_input_tokens
+        if llm_output_tokens is not None:
+            self.llm_output_tokens = llm_output_tokens
+        if llm_input_tokens is not None and llm_output_tokens is not None:
+            self.llm_total_tokens = llm_input_tokens + llm_output_tokens
+        if llm_cost is not None:
+            self.llm_cost = llm_cost
+        if tts_characters is not None:
+            self.tts_characters = tts_characters
+        if tts_cost is not None:
+            self.tts_cost = tts_cost
+
+        # Calculate total cost
+        self.total_cost = (self.llm_cost or 0.0) + (self.tts_cost or 0.0)
+        self.updated_at = now_utc()
+
     def mark_published(self) -> None:
         """Mark episode as published."""
         self.status = EpisodeStatus.PUBLISHED.value
@@ -191,6 +226,13 @@ class Episode(Base):
             "llm_model": self.llm_model,
             "tts_provider": self.tts_provider,
             "tts_voice": self.tts_voice,
+            "llm_input_tokens": self.llm_input_tokens,
+            "llm_output_tokens": self.llm_output_tokens,
+            "llm_total_tokens": self.llm_total_tokens,
+            "llm_cost": self.llm_cost,
+            "tts_characters": self.tts_characters,
+            "tts_cost": self.tts_cost,
+            "total_cost": self.total_cost,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat()
         }

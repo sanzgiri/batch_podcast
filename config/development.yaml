@@ -1,0 +1,79 @@
+# Development Configuration
+app:
+  name: "Newsletter Podcast Generator"
+  version: "0.1.0"
+  debug: true
+  environment: "development"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true
+  log_level: "DEBUG"
+
+database:
+  url: "sqlite:///./data/newsletter_podcast_dev.db"
+  echo: true
+  pool_size: 5
+  max_overflow: 10
+
+logging:
+  level: "DEBUG"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "./logs/app_dev.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+ai_services:
+  llm:
+    provider: "openai"  # or "ollama"
+    ollama:
+      base_url: "http://localhost:11434"
+      model: "llama2"
+      timeout: 300
+    openai:
+      api_key: "${OPENAI_API_KEY}"
+      model: "gpt-4o-mini"
+      max_tokens: 2000
+
+  tts:
+    provider: "unreal_speech"  # or "kokoro"
+    kokoro:
+      base_url: "http://localhost:8080"
+      voice: "default"
+    unreal_speech:
+      api_key: "${OPENAI_API_KEY}"
+      voice: "Liv"
+
+storage:
+  type: "local"  # or "s3"
+  local:
+    upload_dir: "./data/uploads"
+    audio_dir: "./data/audio"
+  s3:
+    bucket: "${S3_BUCKET}"
+    access_key: "${AWS_ACCESS_KEY_ID}"
+    secret_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "${AWS_REGION}"
+    endpoint_url: "http://localhost:9000"  # for local MinIO
+
+podcast:
+  title: "Newsletter Podcast"
+  description: "Automated podcast from newsletter content"
+  author: "Newsletter Podcast Generator"
+  email: "podcast@example.com"
+  language: "en-us"
+  category: "News"
+  image_url: "https://example.com/podcast-logo.jpg"
+  base_url: "http://localhost:8000"
+
+performance:
+  max_concurrent_jobs: 3
+  job_timeout: 600  # 10 minutes
+  retry_attempts: 3
+  retry_delay: 5  # seconds
+
+security:
+  api_key_header: "X-API-Key"
+  allowed_hosts: ["*"]
+  cors_origins: ["*"]

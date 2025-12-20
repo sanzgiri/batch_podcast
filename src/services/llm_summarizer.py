@@ -53,6 +53,11 @@ class SummaryResponse:
     provider: str
     model: str
     processing_time: float
+    # Cost tracking
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost: float = 0.0
 
 
 class BaseLLMClient(ABC):
@@ -132,13 +137,28 @@ class OpenAIClient(BaseLLMClient):
                 # Parse response
                 content = result["choices"][0]["message"]["content"]
                 parsed = json.loads(content)
-                
+
                 processing_time = time.time() - start_time
-                
+
                 # Estimate speech duration (average 150 words per minute)
                 word_count = len(parsed["summary"].split())
                 estimated_duration = int((word_count / 150) * 60)
-                
+
+                # Extract token usage and calculate cost
+                usage = result.get("usage", {})
+                input_tokens = usage.get("prompt_tokens", 0)
+                output_tokens = usage.get("completion_tokens", 0)
+                total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+
+                # Calculate cost using cost tracker
+                from src.lib.cost_tracker import LLMUsage
+                llm_usage = LLMUsage.calculate(
+                    provider="openai",
+                    model=self.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
+                )
+
                 return SummaryResponse(
                     summary=parsed["summary"],
                     title=parsed["title"],
@@ -147,7 +167,11 @@ class OpenAIClient(BaseLLMClient):
                     estimated_duration_seconds=estimated_duration,
                     provider="openai",
                     model=self.model,
-                    processing_time=processing_time
+                    processing_time=processing_time,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    cost=llm_usage.total_cost
                 )
                 
         except aiohttp.ClientError as e:
@@ -183,8 +207,9 @@ class OpenAIClient(BaseLLMClient):
         return """You are an expert content summarizer specializing in creating engaging podcast scripts from newsletter content.
 
 Your task is to transform newsletter content into compelling podcast-style summaries that are:
+- Comprehensive and thorough, covering ALL major sections and topics
 - Conversational and engaging for audio consumption
-- Well-structured with clear key points
+- Well-structured with clear organization and flow
 - Appropriate for the target audience
 - Optimized for text-to-speech conversion
 
@@ -196,45 +221,62 @@ Always respond with valid JSON in this exact format:
 }
 
 Guidelines:
+- Identify and cover ALL major sections, articles, or topics in the newsletter
 - Use natural, conversational language
 - Include smooth transitions between topics
 - Avoid complex punctuation that doesn't translate well to speech
 - Keep sentences at moderate length for natural pacing
-- Include brief introductions and conclusions for topics
-- Make content accessible and engaging for audio listeners"""
+- Structure content with introduction, detailed coverage of each section, and conclusion
+- Make content accessible and engaging for audio listeners
+- Don't just highlight key points - provide thorough coverage of all substantive content"""
     
     def _build_prompt(self, request: SummaryRequest) -> str:
         """Build the user prompt for summarization."""
         prompt_parts = [
-            f"Transform this newsletter content into an engaging podcast episode summary."
+            "Transform this newsletter content into a comprehensive podcast episode.",
+            "",
+            "IMPORTANT: This should be a thorough walkthrough, not just highlights.",
+            "Identify ALL major sections, articles, or topics in the newsletter and cover each one.",
+            "",
+            "Structure your podcast as follows:",
+            "1. Brief introduction welcoming listeners",
+            "2. Overview of what topics will be covered",
+            "3. Detailed coverage of EACH section/article with:",
+            "   - Clear section introduction",
+            "   - Main points and key information",
+            "   - Relevant details, examples, or context",
+            "   - Smooth transition to next section",
+            "4. Brief conclusion summarizing the episode",
+            "",
+            "Do NOT skip sections or only highlight a few items. Cover everything substantive."
         ]
-        
+
         if request.title:
-            prompt_parts.append(f"Original title: {request.title}")
-        
+            prompt_parts.append(f"\nOriginal newsletter title: {request.title}")
+
         # Add style guidance
         style_guidance = {
             "conversational": "Use a friendly, conversational tone as if speaking directly to listeners.",
-            "formal": "Use a professional, informative tone suitable for business audiences.", 
+            "formal": "Use a professional, informative tone suitable for business audiences.",
             "casual": "Use a relaxed, informal tone with personality and humor where appropriate."
         }
         prompt_parts.append(style_guidance.get(request.style, style_guidance["conversational"]))
-        
-        # Add length guidance
+
+        # Add length guidance - updated to focus on completeness
         length_guidance = {
-            "short": "Create a concise summary (2-3 minutes when spoken, ~300-450 words).",
-            "medium": "Create a detailed summary (4-6 minutes when spoken, ~600-900 words).",
-            "long": "Create a comprehensive summary (7-10 minutes when spoken, ~1000-1500 words)."
+            "short": "Aim for ~5-7 minutes when spoken. Cover main sections concisely but don't skip content.",
+            "medium": "Aim for ~10-15 minutes when spoken. Give each section proper attention with details.",
+            "long": "Aim for ~20-30 minutes when spoken. Provide comprehensive, thorough coverage of all content."
         }
         prompt_parts.append(length_guidance.get(request.target_length, length_guidance["medium"]))
-        
+
         # Add focus areas if specified
         if request.focus_areas:
             focus_text = ", ".join(request.focus_areas)
-            prompt_parts.append(f"Pay special attention to these topics: {focus_text}")
-        
+            prompt_parts.append(f"\nPay special attention to these topics: {focus_text}")
+
         prompt_parts.append(f"\nNewsletter content:\n{request.content}")
-        
+
         return "\n\n".join(prompt_parts)
 
 
@@ -291,13 +333,27 @@ class OllamaClient(BaseLLMClient):
                 # Parse response
                 content = result["response"]
                 parsed = json.loads(content)
-                
+
                 processing_time = time.time() - start_time
-                
+
                 # Estimate speech duration
                 word_count = len(parsed["summary"].split())
                 estimated_duration = int((word_count / 150) * 60)
-                
+
+                # Extract token usage if available (Ollama provides this)
+                input_tokens = result.get("prompt_eval_count", 0)
+                output_tokens = result.get("eval_count", 0)
+                total_tokens = input_tokens + output_tokens
+
+                # Local models have zero cost
+                from src.lib.cost_tracker import LLMUsage
+                llm_usage = LLMUsage.calculate(
+                    provider="ollama",
+                    model=self.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
+                )
+
                 return SummaryResponse(
                     summary=parsed["summary"],
                     title=parsed["title"],
@@ -306,7 +362,11 @@ class OllamaClient(BaseLLMClient):
                     estimated_duration_seconds=estimated_duration,
                     provider="ollama",
                     model=self.model,
-                    processing_time=processing_time
+                    processing_time=processing_time,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    cost=llm_usage.total_cost  # Will be 0.0 for local
                 )
                 
         except aiohttp.ClientError as e:
@@ -336,8 +396,9 @@ class OllamaClient(BaseLLMClient):
         system_prompt = """You are an expert content summarizer specializing in creating engaging podcast scripts from newsletter content.
 
 Transform newsletter content into compelling podcast-style summaries that are:
+- Comprehensive and thorough, covering ALL major sections and topics
 - Conversational and engaging for audio consumption
-- Well-structured with clear key points  
+- Well-structured with clear organization and flow
 - Appropriate for the target audience
 - Optimized for text-to-speech conversion
 
@@ -349,26 +410,43 @@ Always respond with valid JSON in this exact format:
 }
 
 Guidelines:
+- Identify and cover ALL major sections, articles, or topics in the newsletter
 - Use natural, conversational language
 - Include smooth transitions between topics
 - Avoid complex punctuation that doesn't translate well to speech
 - Keep sentences at moderate length for natural pacing
-- Include brief introductions and conclusions for topics
-- Make content accessible and engaging for audio listeners"""
-        
+- Structure content with introduction, detailed coverage of each section, and conclusion
+- Make content accessible and engaging for audio listeners
+- Don't just highlight key points - provide thorough coverage of all substantive content"""
+
         user_prompt = self._build_user_prompt(request)
-        
+
         return f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
     
     def _build_user_prompt(self, request: SummaryRequest) -> str:
         """Build the user portion of the prompt."""
         prompt_parts = [
-            f"Transform this newsletter content into an engaging podcast episode summary."
+            "Transform this newsletter content into a comprehensive podcast episode.",
+            "",
+            "IMPORTANT: This should be a thorough walkthrough, not just highlights.",
+            "Identify ALL major sections, articles, or topics in the newsletter and cover each one.",
+            "",
+            "Structure your podcast as follows:",
+            "1. Brief introduction welcoming listeners",
+            "2. Overview of what topics will be covered",
+            "3. Detailed coverage of EACH section/article with:",
+            "   - Clear section introduction",
+            "   - Main points and key information",
+            "   - Relevant details, examples, or context",
+            "   - Smooth transition to next section",
+            "4. Brief conclusion summarizing the episode",
+            "",
+            "Do NOT skip sections or only highlight a few items. Cover everything substantive."
         ]
-        
+
         if request.title:
-            prompt_parts.append(f"Original title: {request.title}")
-        
+            prompt_parts.append(f"\nOriginal newsletter title: {request.title}")
+
         # Add style and length guidance (same as OpenAI)
         style_guidance = {
             "conversational": "Use a friendly, conversational tone as if speaking directly to listeners.",
@@ -376,20 +454,21 @@ Guidelines:
             "casual": "Use a relaxed, informal tone with personality and humor where appropriate."
         }
         prompt_parts.append(style_guidance.get(request.style, style_guidance["conversational"]))
-        
+
+        # Add length guidance - updated to focus on completeness
         length_guidance = {
-            "short": "Create a concise summary (2-3 minutes when spoken, ~300-450 words).",
-            "medium": "Create a detailed summary (4-6 minutes when spoken, ~600-900 words).",
-            "long": "Create a comprehensive summary (7-10 minutes when spoken, ~1000-1500 words)."
+            "short": "Aim for ~5-7 minutes when spoken. Cover main sections concisely but don't skip content.",
+            "medium": "Aim for ~10-15 minutes when spoken. Give each section proper attention with details.",
+            "long": "Aim for ~20-30 minutes when spoken. Provide comprehensive, thorough coverage of all content."
         }
         prompt_parts.append(length_guidance.get(request.target_length, length_guidance["medium"]))
-        
+
         if request.focus_areas:
             focus_text = ", ".join(request.focus_areas)
-            prompt_parts.append(f"Pay special attention to these topics: {focus_text}")
-        
+            prompt_parts.append(f"\nPay special attention to these topics: {focus_text}")
+
         prompt_parts.append(f"\nNewsletter content:\n{request.content}")
-        
+
         return "\n\n".join(prompt_parts)
 
 

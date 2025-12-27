@@ -37,13 +37,11 @@ ai_services:
       max_tokens: 2000
 
   tts:
-    provider: "kokoro"  # or "unreal_speech" 
-    kokoro:
-      base_url: "http://localhost:8080"
-      voice: "default"
-    unreal_speech:
-      api_key: "${UNREAL_SPEECH_API_KEY}"
-      voice: "Scarlett"
+    provider: "kokoro_tts"
+    kokoro_tts:
+      voice: "af_kore"
+      lang_code: "a"
+      speed: 1.0
 
 storage:
   type: "local"  # or "s3"

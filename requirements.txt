@@ -25,3 +25,5 @@ html2text>=2020.1.16
 nltk>=3.8.1
 pydub>=0.25.1
 feedparser>=6.0.10
+kokoro @ git+https://github.com/hexgrad/kokoro
+numpy<2

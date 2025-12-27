@@ -382,6 +382,8 @@ class NewsletterProcessor:
             newsletter.update_status(NewsletterStatus.GENERATING_AUDIO)
             episode.update_status(EpisodeStatus.GENERATING)
             await db.commit()
+            await db.refresh(newsletter)
+            await db.refresh(episode)
 
             # Determine output path using storage manager
             target_file_path = self.storage_manager.get_audio_file_path(

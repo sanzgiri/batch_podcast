@@ -553,7 +553,7 @@ components:
           type: object
         tts_provider:
           type: string
-          enum: [unreal_speech, kokoro, chatterbox]
+          enum: [kokoro_tts]
         tts_config:
           type: object
         storage_provider:
@@ -580,7 +580,7 @@ components:
           type: object
         tts_provider:
           type: string
-          enum: [unreal_speech, kokoro, chatterbox]
+          enum: [kokoro_tts]
         tts_config:
           type: object
         storage_provider:

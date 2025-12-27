@@ -259,7 +259,7 @@ async def test_processing_with_different_ai_providers():
     
     # Test with different LLM providers
     llm_providers = ["ollama", "openai"]
-    tts_providers = ["kokoro", "unreal_speech"]
+    tts_providers = ["kokoro_tts"]
     
     for llm_provider in llm_providers:
         for tts_provider in tts_providers:

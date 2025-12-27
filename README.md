@@ -11,7 +11,7 @@ Newsletter Podcast Generator is a Python-based application that automatically co
 - **Flexible Content Input**: Process newsletters from URLs or direct text input (HTML, Markdown, or plain text)
 - **AI-Powered Summarization**: Transform newsletter content into natural podcast scripts using LLM technology
 - **High-Quality Audio**: Generate professional podcast audio with text-to-speech engines
-- **Multiple AI Providers**: Choose between cloud services (OpenAI, Unreal Speech) or local alternatives (Ollama, Kokoro)
+- **Multiple AI Providers**: Choose between cloud LLMs (OpenAI) or local alternatives (Ollama) with local Kokoro TTS
 - **RESTful API**: FastAPI-based API for programmatic access
 - **CLI Interface**: Command-line tools for batch processing and automation
 - **Async Processing**: Non-blocking architecture for efficient processing
@@ -22,7 +22,7 @@ Newsletter Podcast Generator is a Python-based application that automatically co
 - Python 3.11 or higher
 - SQLite (included with Python)
 - (Optional) Ollama for local LLM processing
-- (Optional) Kokoro/Chatterbox for local TTS
+- (Optional) Kokoro TTS for local audio generation
 
 ## Installation
 
@@ -55,7 +55,7 @@ pip install -r requirements-dev.txt
 cp config/development.yaml.template config/development.yaml
 
 # Edit the configuration file with your settings
-# Add API keys for cloud services (if using OpenAI/Unreal Speech)
+# Add API keys for cloud LLM services (if using OpenAI)
 ```
 
 ### 5. Initialize Database
@@ -75,8 +75,7 @@ The application uses YAML-based configuration with environment-specific files in
 - **Ollama** (Local): Requires Ollama running on `http://localhost:11434`
 
 **TTS Options:**
-- **Unreal Speech** (Cloud): Requires `UNREAL_SPEECH_API_KEY`
-- **Kokoro** (Local): Requires Kokoro server running locally
+- **Kokoro TTS** (Local): Requires the Kokoro Python package
 
 Edit `config/development.yaml` to select your preferred providers and add necessary API keys.
 

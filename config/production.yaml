@@ -38,13 +38,11 @@ ai_services:
       max_tokens: 2000
 
   tts:
-    provider: "${TTS_PROVIDER:-unreal_speech}"
-    kokoro:
-      base_url: "${KOKORO_BASE_URL}"
-      voice: "${KOKORO_VOICE:-default}"
-    unreal_speech:
-      api_key: "${UNREAL_SPEECH_API_KEY}"
-      voice: "${UNREAL_SPEECH_VOICE:-Scarlett}"
+    provider: "${TTS_PROVIDER:-kokoro_tts}"
+    kokoro_tts:
+      voice: "${KOKORO_VOICE:-af_kore}"
+      lang_code: "${KOKORO_LANG:-a}"
+      speed: "${KOKORO_SPEED:-1.0}"
 
 storage:
   type: "${STORAGE_TYPE:-s3}"

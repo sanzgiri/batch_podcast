@@ -18,8 +18,7 @@ class LLMProvider(str, Enum):
 
 class TTSProvider(str, Enum):
     """TTS provider names."""
-    UNREAL_SPEECH = "unreal_speech"
-    KOKORO = "kokoro"
+    KOKORO_TTS = "kokoro_tts"
 
 
 # Pricing in USD per unit
@@ -53,11 +52,7 @@ LLM_PRICING = {
 }
 
 TTS_PRICING = {
-    "unreal_speech": {
-        # $0.001 per 1,000 characters (~$1 per million characters)
-        "cost_per_char": 0.001 / 1_000,
-    },
-    "kokoro": {
+    "kokoro_tts": {
         # Local TTS has no API cost
         "cost_per_char": 0.0,
     }

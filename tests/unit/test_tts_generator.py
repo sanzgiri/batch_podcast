@@ -37,39 +37,15 @@ async def test_kokoro_provider_initialization():
     # Mock configuration for Kokoro
     with patch('src.lib.config.get_settings') as mock_settings:
         mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "kokoro"
-        mock_config.ai_services.tts.kokoro.base_url = "http://localhost:8080"
-        mock_config.ai_services.tts.kokoro.voice = "default"
+        mock_config.ai_services.tts.provider = "kokoro_tts"
+        mock_config.ai_services.tts.kokoro_tts.voice = "af_kore"
         mock_settings.return_value = mock_config
         
         generator = TTSGenerator()
         await generator.initialize()
         
-        assert generator.provider_name == "kokoro"
-        assert generator.provider_config["base_url"] == "http://localhost:8080"
-        assert generator.provider_config["voice"] == "default"
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_unreal_speech_provider_initialization():
-    """Test Unreal Speech TTS provider initialization."""
-    from src.services.tts_generator import TTSGenerator
-    
-    # Mock configuration for Unreal Speech
-    with patch('src.lib.config.get_settings') as mock_settings:
-        mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "unreal_speech"
-        mock_config.ai_services.tts.unreal_speech.api_key = "test-api-key"
-        mock_config.ai_services.tts.unreal_speech.voice = "Scarlett"
-        mock_settings.return_value = mock_config
-        
-        generator = TTSGenerator()
-        await generator.initialize()
-        
-        assert generator.provider_name == "unreal_speech"
-        assert generator.provider_config["api_key"] == "test-api-key"
-        assert generator.provider_config["voice"] == "Scarlett"
+        assert generator.provider_name == "kokoro_tts"
+        assert generator.provider_config["voice"] == "af_kore"
 
 
 @pytest.mark.unit
@@ -86,12 +62,11 @@ async def test_generate_audio_with_kokoro():
     applications in code generation and documentation.
     """
     
-    # Mock Kokoro configuration
+    # Mock Kokoro TTS configuration
     with patch('src.lib.config.get_settings') as mock_settings:
         mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "kokoro"
-        mock_config.ai_services.tts.kokoro.base_url = "http://localhost:8080"
-        mock_config.ai_services.tts.kokoro.voice = "default"
+        mock_config.ai_services.tts.provider = "kokoro_tts"
+        mock_config.ai_services.tts.kokoro_tts.voice = "af_kore"
         mock_settings.return_value = mock_config
         
         generator = TTSGenerator()
@@ -131,47 +106,6 @@ async def test_generate_audio_with_kokoro():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_generate_audio_with_unreal_speech():
-    """Test audio generation using Unreal Speech provider."""
-    from src.services.tts_generator import TTSGenerator
-    
-    text_content = "This is a test text for Unreal Speech TTS generation."
-    
-    # Mock Unreal Speech configuration
-    with patch('src.lib.config.get_settings') as mock_settings:
-        mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "unreal_speech"
-        mock_config.ai_services.tts.unreal_speech.api_key = "test-key"
-        mock_config.ai_services.tts.unreal_speech.voice = "Scarlett"
-        mock_settings.return_value = mock_config
-        
-        generator = TTSGenerator()
-        await generator.initialize()
-        
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-            output_path = temp_file.name
-        
-        try:
-            mock_audio_data = b"fake_unreal_speech_audio_data"
-            
-            with patch('aiohttp.ClientSession.post') as mock_post:
-                mock_response = AsyncMock() 
-                mock_response.status = 200
-                mock_response.read = AsyncMock(return_value=mock_audio_data)
-                mock_post.return_value.__aenter__.return_value = mock_response
-                
-                result_path = await generator.generate_audio(text_content, output_path)
-                
-                assert result_path == output_path
-                assert Path(result_path).exists()
-        
-        finally:
-            if os.path.exists(output_path):
-                os.unlink(output_path)
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
 async def test_generate_audio_error_handling():
     """Test error handling in TTS generation."""
     from src.services.tts_generator import TTSGenerator
@@ -182,8 +116,8 @@ async def test_generate_audio_error_handling():
     # Test service error
     with patch('src.lib.config.get_settings') as mock_settings:
         mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "kokoro"
-        mock_config.ai_services.tts.kokoro.base_url = "http://localhost:8080"
+        mock_config.ai_services.tts.provider = "kokoro_tts"
+        mock_config.ai_services.tts.kokoro_tts.voice = "af_kore"
         mock_settings.return_value = mock_config
         
         generator = TTSGenerator()
@@ -204,7 +138,7 @@ async def test_generate_audio_error_handling():
                     await generator.generate_audio(text_content, output_path)
                 
                 assert "500" in str(exc_info.value)
-                assert exc_info.value.provider == "kokoro"
+                assert exc_info.value.provider == "kokoro_tts"
         
         finally:
             if os.path.exists(output_path):
@@ -223,8 +157,8 @@ async def test_generate_audio_timeout_handling():
     
     with patch('src.lib.config.get_settings') as mock_settings:
         mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "kokoro"
-        mock_config.ai_services.tts.kokoro.base_url = "http://localhost:8080"
+        mock_config.ai_services.tts.provider = "kokoro_tts"
+        mock_config.ai_services.tts.kokoro_tts.voice = "af_kore"
         mock_settings.return_value = mock_config
         
         generator = TTSGenerator()
@@ -369,26 +303,17 @@ async def test_provider_switching():
     """Test switching between TTS providers."""
     from src.services.tts_generator import TTSGenerator
     
-    # Test with Kokoro first
+    # Test with Kokoro TTS
     with patch('src.lib.config.get_settings') as mock_settings:
         mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "kokoro"
-        mock_config.ai_services.tts.kokoro.base_url = "http://localhost:8080"
+        mock_config.ai_services.tts.provider = "kokoro_tts"
+        mock_config.ai_services.tts.kokoro_tts.voice = "af_kore"
         mock_settings.return_value = mock_config
         
         generator = TTSGenerator()
         await generator.initialize()
         
-        assert generator.provider_name == "kokoro"
-        
-        # Reinitialize with Unreal Speech
-        mock_config.ai_services.tts.provider = "unreal_speech"
-        mock_config.ai_services.tts.unreal_speech.api_key = "test-key"
-        
-        await generator.shutdown()
-        await generator.initialize()
-        
-        assert generator.provider_name == "unreal_speech"
+        assert generator.provider_name == "kokoro_tts"
 
 
 @pytest.mark.unit
@@ -402,8 +327,8 @@ async def test_voice_parameter_handling():
     # Test with custom voice parameter
     with patch('src.lib.config.get_settings') as mock_settings:
         mock_config = MagicMock()
-        mock_config.ai_services.tts.provider = "unreal_speech"
-        mock_config.ai_services.tts.unreal_speech.voice = "Dan"
+        mock_config.ai_services.tts.provider = "kokoro_tts"
+        mock_config.ai_services.tts.kokoro_tts.voice = "af_kore"
         mock_settings.return_value = mock_config
         
         generator = TTSGenerator()

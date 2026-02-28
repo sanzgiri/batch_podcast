@@ -60,6 +60,9 @@ class Newsletter(Base):
     issue_number = Column(String(50), nullable=True)  # e.g., "323"
     slug = Column(String(100), nullable=True)  # e.g., "the-batch"
     
+    # Link to generated episode
+    episode_id = Column(String(36), nullable=True)
+
     # Processing status
     status = Column(
         SQLEnum(NewsletterStatus),
@@ -124,6 +127,11 @@ class Newsletter(Base):
         """Set error status and message."""
         self.status = NewsletterStatus.FAILED
         self.error_message = error_message
+        self.updated_at = now_utc()
+
+    def clear_error(self) -> None:
+        """Clear error message."""
+        self.error_message = None
         self.updated_at = now_utc()
     
     def set_extracted_content(self, extracted_content: str) -> None:

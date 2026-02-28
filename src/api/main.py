@@ -5,7 +5,9 @@ This module creates and configures the FastAPI application with all routes,
 middleware, and error handling.
 """
 
+import time
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -232,7 +234,3 @@ def run_server():
 
 if __name__ == "__main__":
     run_server()
-
-
-# Add missing import
-import time

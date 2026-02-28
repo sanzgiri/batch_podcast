@@ -26,10 +26,10 @@ logging:
 
 ai_services:
   llm:
-    provider: "openai"  # or "ollama"
+    provider: "ollama"  # or "openai"
     ollama:
       base_url: "http://localhost:11434"
-      model: "llama2"
+      model: "qwen2.5:3b-instruct"
       timeout: 300
     openai:
       api_key: "${OPENAI_API_KEY}"

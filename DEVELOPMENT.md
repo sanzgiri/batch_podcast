@@ -2,27 +2,124 @@
 
 ## Table of Contents
 1. [Implementation Status](#implementation-status)
-2. [Phase 1: Newsletter Profiles & Smart Organization](#phase-1-newsletter-profiles--smart-organization)
-3. [Cost Tracking](#cost-tracking)
-4. [Phase 2: RSS Feeds & Batch Processing](#phase-2-rss-feeds--batch-processing)
-5. [Phase 3: Advanced Features](#phase-3-advanced-features)
-6. [Test Plans](#test-plans)
+2. [TTS Engine Integration](#tts-engine-integration)
+3. [Phase 1: Newsletter Profiles & Smart Organization](#phase-1-newsletter-profiles--smart-organization)
+4. [Cost Tracking](#cost-tracking)
+5. [Phase 2: RSS Feeds & Batch Processing](#phase-2-rss-feeds--batch-processing)
+6. [Phase 3: Advanced Features](#phase-3-advanced-features)
+7. [Test Plans](#test-plans)
 
 ---
 
 ## Implementation Status
 
 ### ✅ Completed
+- TTS Engine Integration (text2audio → `src/lib/tts_engine`, June 2026)
 - Phase 1: Newsletter Profiles & Smart File Organization (100%)
-- Cost Tracking Infrastructure (70% - needs service integration)
+- Cost Tracking (100% — LLM token tracking + TTS character tracking)
+- Dialogue-mode script generation + rendering
 
 ### 🚧 In Progress
-- Cost tracking service integration
-- Documentation
+- End-to-end verification against live URLs (blocked by URL extraction issue — see `STATUS.md`)
 
 ### 📋 Planned
 - Phase 2: RSS Feeds & Batch Processing
 - Phase 3: MP3 Metadata & Playlists
+
+---
+
+## TTS Engine Integration
+
+### Status: ✅ COMPLETED (June 2026)
+
+### What Was Implemented
+
+Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into the project as `src/lib/tts_engine`, replacing the old naive Kokoro client. The new engine adds production-quality realism tricks while keeping rendering fully local.
+
+#### 1. Package Structure
+**Files Created:**
+- `src/lib/tts_engine/__init__.py` — public API surface
+- `src/lib/tts_engine/blocks.py` — `Block` / `Chapter` dataclasses (universal across input modes)
+- `src/lib/tts_engine/text_processing.py` — `expand_abbreviations`, `apply_pronunciations`, `clean_inline`, 30+ tech abbreviation rules
+- `src/lib/tts_engine/parsing.py` — `parse_text`, `parse_dialogue` (Speaker:line), `parse_markdown_book`
+- `src/lib/tts_engine/rendering.py` — `parse_voice_spec`, `load_blended_voice` (weighted tensor mix), `silence`, `render_chapter_blocks`
+- `src/lib/tts_engine/encoding.py` — `loudnorm` (ffmpeg), `encode_mp3`, `build_m4b`, `write_wav`
+- `src/lib/tts_engine/presets.py` — preset + pronunciation-dict loaders
+- `src/lib/tts_engine/data/presets/*.json` — 6 bundled presets
+- `src/lib/tts_engine/data/pronunciations/*.json` — `ai_tech` + `finance` dicts
+
+#### 2. Realism Features
+- **Voice blending** — weighted tensor mixes (e.g. `af_heart:0.7,af_nicole:0.3`)
+- **Two-voice dialogue mode** — alternating voices on `Host:`/`Guest:` turns
+- **Programmatic silence injection** — 0.4s between paragraphs, 0.45s between dialogue turns, 0.6s around blockquotes, 1.2s before section headings
+- **Pronunciation overrides** — word-boundary respelling (Sutskever → Sootskehver) with longest-key-first matching
+- **Abbreviation expansion** — GPU → G.P.U., LLM → L.L.M., AI → A.I., 30+ rules
+- **ffmpeg loudnorm** — broadcast standard (`I=-16:TP=-2:LRA=11` for podcast, `-18` for audiobook)
+- **Markdown awareness** — strips code fences, flattens lists to em-dashed prose, drops tables, treats horizontal rules as section breaks
+- **M4B with chapter markers** — for book-mode rendering
+
+#### 3. Bundled Presets
+| Preset | Use case |
+|---|---|
+| `podcast_two_host` | Default for news/AI podcasts. `af_heart` + `am_michael` alternating, speed 0.95 |
+| `podcast_interview` | `af_bella` (host) + `am_fenrir` blend (guest). Conversational warmth + deep guest. |
+| `audiobook_warm` | `af_heart + af_nicole` blend, male blockquotes. General-purpose non-fiction. |
+| `audiobook_deep` | `am_fenrir + am_adam` blend, female blockquotes. Gravitas — philosophy/economics. |
+| `audiobook_british` | `bm_george + bm_fable` blend. British male, literary material. |
+| `story` | `af_heart` solo, slightly faster. Fiction / narrative. |
+
+#### 4. Bundled Pronunciation Dicts
+- `ai_tech` — Sutskever, Karpathy, Hassabis, Kahneman, Andreessen, Llama, Mistral, DeepSeek, Anthropic, Yudkowsky, etc.
+- `finance` — Cowen, Munger, Taleb, Berkshire, etc.
+
+Use `extra_pronunciations` in a newsletter profile for inline per-source overrides.
+
+#### 5. Services Rewired
+**Files Rewritten:**
+- `src/services/tts_generator.py` — `KokoroTTSClient._synthesize_sync` now uses the engine end-to-end. Removed `UnrealSpeechClient` (cloud TTS removed by design).
+- `src/services/llm_summarizer.py` — Added shared `_build_system_prompt(mode)` / `_build_user_prompt(request)` helpers; new dialogue-mode prompt that emits `Host:`/`Guest:` transcripts ready for `parse_dialogue()`.
+- `src/services/newsletter_processor.py` — Reads `profile.processing.mode` and `profile.tts.*`, threads them through to the TTS engine. Eliminated the directory-swap-then-move dance; the engine writes directly to the storage-manager target path.
+- `src/lib/newsletter_config.py` — Added `ProcessingConfig.mode` (`monologue` | `dialogue`) and a new `TTSProfileConfig` model (preset, voices, pronunciations, speeds, loudness target).
+
+#### 6. Config Changes
+- `config/development.yaml` — switched from `unreal_speech` → `kokoro_tts` with `af_heart` default
+- `config/newsletters.yaml` — `the-batch` now uses `mode: dialogue` + `tts.preset: podcast_two_host` + `tts.pronunciations: ai_tech`
+- `config/*.template` — documented the full new schema with inline comments
+
+#### 7. Side Fix
+`.gitignore` had `lib/` and `data/` patterns that were globally matching `src/lib/` and `src/lib/tts_engine/data/`. Anchored both with `/lib/` and `/data/` so only the venv root paths are excluded.
+
+### Tests
+
+`tests/unit/test_tts_engine.py` — **39 unit tests, all passing**. Covers:
+- abbreviation expansion (tech, business, Latin)
+- pronunciation overrides (longest-key-first, word boundaries, comment-key skipping)
+- inline markdown cleanup
+- voice spec parsing (single, blend, normalization)
+- text/dialogue/markdown-book parsers
+- preset + pronunciation-dict loaders (bundled + file paths)
+- silence generation
+
+### Configuration Example
+
+```yaml
+newsletters:
+  the-batch:
+    processing:
+      mode: "dialogue"            # Host/Guest two-voice transcript
+      length: "long"
+      style: "conversational"
+    tts:
+      preset: "podcast_two_host"  # af_heart + am_michael alternating
+      pronunciations: "ai_tech"   # Sutskever, Karpathy, Llama, etc.
+      # Optional overrides on top of the preset:
+      # voice_a: "af_heart:0.7,af_nicole:0.3"
+      # dialogue_speed: 0.95
+      extra_pronunciations:
+        "YourName": "yore-nayme"
+      target_lufs: -16.0          # -16 podcast, -18 audiobook
+      expand_abbrev: true
+```
 
 ---
 
@@ -152,17 +249,17 @@ sqlite3 data/newsletter_podcast_local.db \
 
 ## Cost Tracking
 
-### Status: 🚧 70% COMPLETE
+### Status: ✅ 100% COMPLETE (as of June 2026)
 
 ### What Was Implemented
 
 #### 1. Cost Tracking Infrastructure
-**Files Created:**
+**Files:**
 - `src/lib/cost_tracker.py` - Cost calculation utilities
 
 **Features:**
 - LLM pricing data (OpenAI GPT-4o, GPT-4o-mini, GPT-3.5-turbo)
-- TTS pricing data (Unreal Speech, Kokoro)
+- TTS pricing data (legacy support; Kokoro is local → $0.00)
 - Cost calculation from token/character counts
 - Support for local providers (zero cost)
 
@@ -178,154 +275,83 @@ LLM_PRICING = {
             "input": $0.00000015/token,  # $0.15/1M tokens
             "output": $0.0000006/token    # $0.60/1M tokens
         }
+    },
+    "ollama": {
+        # All local Ollama models are $0.00
     }
 }
 
 TTS_PRICING = {
-    "unreal_speech": {
-        "cost_per_char": $0.000001  # $1/1M characters
+    "kokoro_tts": {
+        "cost_per_char": 0.0  # local rendering, always free
     }
 }
 ```
 
-#### 2. Database Schema Updates
-**Files Modified:**
-- `src/models/episode.py` - Added cost tracking fields
+#### 2. Database Schema
+**Files:**
+- `src/models/episode.py` - Cost tracking fields
 - Migration: `scripts/migrate_add_cost_tracking.py`
 
-**New Fields:**
+**Fields in `episodes`:**
 - `llm_input_tokens`, `llm_output_tokens`, `llm_total_tokens`
 - `llm_cost`
 - `tts_characters`
-- `tts_cost`
+- `tts_cost` (always 0.0 with local Kokoro)
 - `total_cost`
 
-**New Method:**
+**Method:**
 ```python
 episode.set_cost_info(
     llm_input_tokens=1500,
     llm_output_tokens=800,
     llm_cost=0.0045,
     tts_characters=4500,
-    tts_cost=0.0045
+    tts_cost=0.0,         # Kokoro = local = free
 )
 ```
 
-### What Needs To Be Done
+#### 3. LLM Service Integration — DONE
+- `OpenAIClient.summarize()` extracts `usage.prompt_tokens` / `usage.completion_tokens` from the API response and calculates cost via `LLMUsage.calculate()`.
+- `OllamaClient.summarize()` extracts `prompt_eval_count` / `eval_count` from Ollama's response; cost is always 0.
+- Both return `input_tokens`, `output_tokens`, `total_tokens`, `cost` on the `SummaryResponse`.
 
-#### 1. LLM Service Integration
-**File to Modify:** `src/services/llm_summarizer.py`
+#### 4. TTS Service Integration — DONE
+- `KokoroTTSClient` records `characters = len(request.text)` on every `TTSResponse`.
+- `NewsletterProcessor` calls `episode.set_cost_info(tts_characters=..., tts_cost=0.0)` after TTS completes (wrapped in `try/except` to be safe across async/sync boundaries).
+- The previous `greenlet_spawn` blocker was resolved during the text2audio integration refactor — the engine now runs fully off the event loop via `asyncio.to_thread`.
 
-**Changes Needed:**
-```python
-# In OpenAIClient.summarize():
-# Extract token usage from API response
-usage = result.get("usage", {})
-input_tokens = usage.get("prompt_tokens", 0)
-output_tokens = usage.get("completion_tokens", 0)
+#### 5. Cost Reporting CLI — DONE
+**File:** `src/cli/cost_commands.py`
 
-# Calculate costs
-from src.lib.cost_tracker import LLMUsage
-llm_usage = LLMUsage.calculate(
-    provider="openai",
-    model=self.model,
-    input_tokens=input_tokens,
-    output_tokens=output_tokens
-)
-
-# Add to SummaryResponse
-response = SummaryResponse(
-    ...existing fields...,
-    input_tokens=input_tokens,
-    output_tokens=output_tokens,
-    cost=llm_usage.total_cost
-)
-```
-
-#### 2. TTS Service Integration
-**File to Modify:** `src/services/tts_generator.py`
-
-**Changes Needed:**
-```python
-# In UnrealSpeechClient.synthesize():
-# Track character count
-characters = len(request.text)
-
-# Calculate cost
-from src.lib.cost_tracker import TTSUsage
-tts_usage = TTSUsage.calculate(
-    provider="unreal_speech",
-    voice=request.voice or self.default_voice,
-    characters=characters
-)
-
-# Add to TTSResponse
-response = TTSResponse(
-    ...existing fields...,
-    characters=characters,
-    cost=tts_usage.cost
-)
-```
-
-#### 3. Newsletter Processor Integration
-**File to Modify:** `src/services/newsletter_processor.py`
-
-**Changes Needed:**
-```python
-# After LLM summarization:
-episode.set_cost_info(
-    llm_input_tokens=summary_response.input_tokens,
-    llm_output_tokens=summary_response.output_tokens,
-    llm_cost=summary_response.cost
-)
-
-# After TTS generation:
-episode.set_cost_info(
-    tts_characters=tts_response.characters,
-    tts_cost=tts_response.cost
-)
-```
-
-#### 4. Cost Reporting Utility
-**File to Create:** `src/cli/cost_report.py`
-
-**Features to Implement:**
-- Cost breakdown by newsletter
-- Cost breakdown by date range
-- Total costs summary
-- Per-episode cost details
-- Export to CSV
-
-**CLI Command:**
+**Commands:**
 ```bash
-# Show cost summary
-python -m src costs summary
+# Summary table with optional filters
+python -m src costs summary [--newsletter ID] [--from DATE] [--to DATE] [--limit N]
 
-# Show costs for specific newsletter
-python -m src costs --newsletter the-batch
+# Per-episode breakdown
+python -m src costs episode <episode-id>
 
-# Show costs for date range
-python -m src costs --from 2025-01-01 --to 2025-01-31
-
-# Export to CSV
-python -m src costs --export costs_report.csv
+# Aggregate totals
+python -m src costs totals
 ```
 
 ### Testing Cost Tracking
 
 ```bash
-# 1. Run migration
+# 1. Run migrations (idempotent)
 python scripts/migrate_add_cost_tracking.py
 
-# 2. Process a newsletter and check costs
+# 2. Process a newsletter
 python -m src process-url "URL" --newsletter the-batch --wait
 
-# 3. Query database for cost info
+# 3. Query the database
 sqlite3 data/newsletter_podcast_local.db \
   "SELECT llm_total_tokens, llm_cost, tts_characters, tts_cost, total_cost FROM episodes;"
 
-# 4. Generate cost report (once implemented)
+# 4. View via CLI
 python -m src costs summary
+python -m src costs totals
 ```
 
 ---

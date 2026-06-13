@@ -27,5 +27,6 @@ pydub>=0.25.1
 feedparser>=6.0.10
 kokoro @ git+https://github.com/hexgrad/kokoro
 numpy<2
+soundfile>=0.12.1
 aiosqlite>=0.19.0
 gradio>=4.0.0

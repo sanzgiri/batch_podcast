@@ -18,7 +18,26 @@ newsletters:
     processing:
       length: "long"              # Options: short (5-7min), medium (10-15min), long (20-30min)
       style: "conversational"     # Options: conversational, formal, casual
+      mode: "monologue"           # Options: monologue (single narrator) | dialogue (Host/Guest)
       focus_areas: []             # Optional: list of topics to emphasize
+
+    # TTS rendering settings (Kokoro local)
+    # Presets live in src/lib/tts_engine/data/presets/*.json
+    # Pronunciations live in src/lib/tts_engine/data/pronunciations/*.json
+    tts:
+      preset: "podcast_two_host"  # Named bundled preset (optional)
+      # voice: "af_heart:0.7,af_nicole:0.3"   # Primary voice (overrides preset)
+      # voice_a: "af_heart"                   # Dialogue mode: first speaker
+      # voice_b: "am_michael"                 # Dialogue mode: second speaker
+      # quote_voice: "am_michael"             # Blockquote voice (monologue mode)
+      # speed: 0.88                           # Speech speed (0.5–2.0)
+      # quote_speed: 0.85
+      # dialogue_speed: 0.95
+      pronunciations: "ai_tech"   # Named bundled dict OR path to JSON file
+      # extra_pronunciations:                 # Inline overrides merged on top
+      #   "YourName": "yore-nayme"
+      expand_abbrev: true         # Expand abbreviations (GPU → G.P.U.)
+      target_lufs: -16.0          # Loudness normalization target (-16 podcast, -18 audiobook)
 
     # Output configuration
     output:

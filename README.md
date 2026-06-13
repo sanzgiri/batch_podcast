@@ -4,6 +4,8 @@
 
 RecastAI scrapes written content, rewrites it as a natural conversational script using an LLM, and generates audio with text-to-speech. Browse and play your episodes in a Gradio web UI.
 
+**100% local.** Ollama for summarization, Kokoro for TTS. No API keys, no cloud, no cost.
+
 ## Quick Start
 
 ```bash
@@ -39,13 +41,17 @@ URL/Text → Content Extraction → LLM Summarization → Text-to-Speech → MP3
 
 ## Features
 
-- **Multiple AI Providers** — OpenAI or Ollama (local) for LLM; Kokoro (local), gTTS, or Unreal Speech for TTS
-- **Runs Entirely Local** — Ollama + Kokoro/gTTS = no API keys, no cloud, no cost
-- **Newsletter Profiles** — Per-source config with URL pattern matching, metadata extraction, smart file naming
+- **Fully Local AI** — Ollama (LLM) + Kokoro (TTS). No API keys, no cloud, no cost.
+- **Production-quality TTS** — Voice blending, programmatic silence injection, ffmpeg loudness normalization (broadcast standard), and pronunciation overrides via the integrated [text2audio](https://github.com/sanzgiri/text2audio)-derived `src/lib/tts_engine`.
+- **Two-host dialogue mode** — Generates Host/Guest scripts and renders them with alternating voices for NPR-style podcasts.
+- **Bundled presets** — `podcast_two_host`, `podcast_interview`, `audiobook_warm`, `audiobook_deep`, `audiobook_british`, `story`.
+- **Bundled pronunciation dicts** — `ai_tech` (Sutskever, Karpathy, Llama, etc.), `finance` (Cowen, Munger, Berkshire, etc.). Easy to extend.
+- **Tech-aware abbreviation expansion** — GPU → G.P.U., LLM → L.L.M., etc. so acronyms read correctly.
+- **Newsletter Profiles** — Per-source config with URL pattern matching, metadata extraction, smart file naming, per-newsletter voice/dialogue settings.
 - **Web UI** — Gradio-based episode browser with audio player and script viewer
 - **REST API** — FastAPI endpoints for programmatic access
 - **CLI** — Command-line tools for processing and batch automation
-- **Cost Tracking** — Per-episode LLM token and TTS character cost tracking
+- **Cost Tracking** — Per-episode LLM token tracking (TTS is free — Kokoro runs locally)
 
 ## Usage
 
@@ -79,11 +85,28 @@ uvicorn src.api.main:app --reload
 
 YAML-based config in `config/development.yaml`:
 
-- **LLM**: `openai` (cloud, needs API key) or `ollama` (local, free)
-- **TTS**: `kokoro_tts` (local, needs PyTorch), `gtts` (free, uses Google), or `unreal_speech` (cloud)
+- **LLM**: `ollama` (local, default — needs Ollama running) or `openai` (cloud, needs API key)
+- **TTS**: `kokoro_tts` (local, default — needs Kokoro voicepacks; downloaded on first run)
 - **Storage**: Local SQLite + filesystem
 
-Newsletter profiles in `config/newsletters.yaml` for per-source settings (processing style, output naming, metadata extraction).
+Newsletter profiles in `config/newsletters.yaml` configure per-source settings:
+
+- **Processing**: `length`, `style`, `mode` (`monologue` | `dialogue`), `focus_areas`
+- **TTS**: `preset`, `voice`, `voice_a`/`voice_b` (dialogue), `pronunciations`, `target_lufs`
+- **Output**: subfolder, filename template, metadata extraction patterns
+
+Example (`the-batch`):
+
+```yaml
+the-batch:
+  processing:
+    mode: dialogue              # Host/Guest two-voice transcript
+    length: long
+  tts:
+    preset: podcast_two_host    # af_heart + am_michael alternating
+    pronunciations: ai_tech     # Sutskever, Karpathy, Llama, etc.
+    target_lufs: -16.0          # podcast loudness standard
+```
 
 ## Architecture
 
@@ -91,7 +114,15 @@ Newsletter profiles in `config/newsletters.yaml` for per-source settings (proces
 src/
 ├── api/              # FastAPI application and routes
 ├── cli/              # Command-line interface
-├── lib/              # Config, database, logging, exceptions, metrics
+├── lib/              # Config, database, logging, exceptions, metrics, storage
+│   └── tts_engine/   # Local Kokoro pipeline (vendored from text2audio)
+│       ├── blocks.py         # Block/Chapter dataclasses
+│       ├── text_processing.py # abbreviations, pronunciations, markdown cleanup
+│       ├── parsing.py        # text/dialogue/markdown-book parsers
+│       ├── rendering.py      # voice loading + blending, render_chapter_blocks
+│       ├── encoding.py       # ffmpeg loudnorm, MP3, M4B with chapter markers
+│       ├── presets.py        # preset + pronunciation-dict loaders
+│       └── data/             # bundled presets/*.json + pronunciations/*.json
 ├── models/           # SQLAlchemy models (Newsletter, Episode)
 ├── services/         # Content extraction, LLM, TTS, pipeline orchestration
 └── ui/               # Gradio web interface
@@ -100,12 +131,13 @@ src/
 ## Prerequisites
 
 - Python 3.11+
-- For local LLM: [Ollama](https://ollama.ai) running with a model (e.g., `ollama pull qwen2.5:3b-instruct`)
-- For local TTS: Kokoro (requires PyTorch) or gTTS (lightweight, uses Google's API)
+- [Ollama](https://ollama.ai) running with a model (e.g., `ollama pull qwen2.5:3b-instruct`)
+- `ffmpeg` and `espeak-ng` installed (`brew install ffmpeg espeak-ng` on macOS)
+- Kokoro voicepacks download automatically on first TTS run (~few hundred MB, one-time)
 
 ## Technology Stack
 
-Python 3.11+ · FastAPI · SQLAlchemy (async) · Pydantic · Gradio · Ollama · Kokoro/gTTS
+Python 3.11+ · FastAPI · SQLAlchemy (async) · Pydantic · Gradio · Ollama · Kokoro · ffmpeg
 
 ## License
 

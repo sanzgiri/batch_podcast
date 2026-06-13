@@ -12,7 +12,15 @@ newsletters:
     processing:
       length: "long"              # long format for comprehensive coverage
       style: "conversational"
+      mode: "dialogue"            # Host/Guest two-voice script
       focus_areas: []
+
+    tts:
+      preset: "podcast_two_host"  # bundled preset: af_heart + am_michael alternating
+      pronunciations: "ai_tech"   # bundled dict: Sutskever, Karpathy, Llama, etc.
+      # All other TTS settings inherit preset defaults.
+      # To override, set: voice, voice_a, voice_b, speed, dialogue_speed, etc.
+      target_lufs: -16.0          # podcast loudness standard
 
     output:
       folder: "the-batch"

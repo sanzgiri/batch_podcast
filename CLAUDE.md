@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Newsletter Podcast Generator - Convert newsletter content into podcast episodes using AI-powered summarization and text-to-speech. Built with Python 3.11+, FastAPI, and supports both local (Ollama/Kokoro) and cloud (OpenAI/Unreal Speech) AI services.
+Newsletter Podcast Generator - Convert newsletter content into podcast episodes using AI-powered summarization and text-to-speech. Built with Python 3.11+, FastAPI. Fully local: Ollama for LLM summarization, Kokoro for TTS (via the integrated `src/lib/tts_engine` pipeline derived from text2audio). No cloud APIs required.
 
 ## Development Commands
 
@@ -60,9 +60,9 @@ python scripts/migrate_add_cost_tracking.py          # Add cost tracking fields
 Newsletter processing follows this flow, orchestrated by `NewsletterProcessor` (`src/services/newsletter_processor.py`):
 
 1. **Content Extraction** (`src/services/content_extractor.py`) - Extracts and cleans text from URLs or direct input (HTML/Markdown/Text)
-2. **LLM Summarization** (`src/services/llm_summarizer.py`) - Transforms content into podcast-style script using OpenAI or Ollama
-3. **TTS Generation** (`src/services/tts_generator.py`) - Converts script to audio using Kokoro (local) or Unreal Speech (cloud)
-4. **Episode Storage** - Saves MP3 with profile-aware file organization via `StorageManager` (`src/lib/storage.py`)
+2. **LLM Summarization** (`src/services/llm_summarizer.py`) - Transforms content into podcast-style script using Ollama (local) or OpenAI. Supports `mode="monologue"` (single narrator script) and `mode="dialogue"` (Host/Guest two-speaker transcript).
+3. **TTS Generation** (`src/services/tts_generator.py`) - Converts script to audio using Kokoro via the bundled `src/lib/tts_engine` pipeline. Features voice blending, paragraph-level silence injection, pronunciation overrides, abbreviation expansion, dialogue alternation, and ffmpeg `loudnorm`.
+4. **Episode Storage** - Saves MP3 with profile-aware file organization via `StorageManager` (`src/lib/storage.py`). The TTS engine writes directly to the storage-manager-derived path.
 
 Status tracking through database: `pending → extracting → summarizing → generating_audio → completed`
 
@@ -70,18 +70,34 @@ Status tracking through database: `pending → extracting → summarizing → ge
 
 **Provider Pattern**: AI services use abstract base classes with concrete implementations:
 - `BaseLLMClient` → `OpenAIClient` / `OllamaClient`
-- `BaseTTSClient` → `UnrealSpeechClient` / `KokoroClient`
+- `BaseTTSClient` → `KokoroTTSClient` (cloud TTS providers were removed; all rendering is local)
 
 All services are async context managers for proper resource management.
+
+### TTS Engine (`src/lib/tts_engine`)
+
+Local Kokoro rendering pipeline vendored from text2audio (https://github.com/sanzgiri/text2audio). Modules:
+- `blocks.py` — `Block` / `Chapter` dataclasses (universal across input modes)
+- `text_processing.py` — `expand_abbreviations`, `apply_pronunciations`, `clean_inline`, plus tech-tuned `ABBREVIATIONS` dict
+- `parsing.py` — `parse_text`, `parse_dialogue` (Speaker:line), `parse_markdown_book`
+- `rendering.py` — `parse_voice_spec`, `load_blended_voice` (weighted tensor mix), `silence`, `render_chapter_blocks`
+- `encoding.py` — `loudnorm` (ffmpeg −0.5 LUFS / −2 dBFS), `encode_mp3`, `build_m4b`, `write_wav`
+- `presets.py` — `load_preset`, `load_pronunciations` from bundled `data/presets/*.json` and `data/pronunciations/*.json`
+
+Bundled presets: `podcast_two_host`, `podcast_interview`, `audiobook_warm`, `audiobook_deep`, `audiobook_british`, `story`.
+Bundled pronunciation dicts: `ai_tech` (Sutskever, Karpathy, Llama, etc.), `finance`.
 
 ### Newsletter Profiles System
 
 YAML-based per-newsletter configuration (`config/newsletters.yaml`) managed by `src/lib/newsletter_config.py`:
-- Per-newsletter processing settings (length, style, focus areas)
+- Per-newsletter processing settings (length, style, focus areas, monologue/dialogue `mode`)
+- Per-newsletter TTS settings (`tts:` block: preset, voice blends, pronunciation dict, loudness target)
 - URL pattern matching for auto-detection of newsletter source
 - Metadata extraction via regex (issue numbers, dates from URLs/content)
 - Smart file organization: `data/audio/{newsletter-slug}/` with configurable naming templates
 - Profile can be specified via CLI `--newsletter` flag or auto-detected from URL
+
+Example `the-batch` profile uses `mode: dialogue` + `tts.preset: podcast_two_host` + `tts.pronunciations: ai_tech` for an NPR-style two-host podcast with correct AI-researcher name pronunciations.
 
 ### Configuration System
 
@@ -93,7 +109,7 @@ Layered YAML configuration with Pydantic validation:
 
 ### Cost Tracking
 
-LLM token usage and TTS character counts tracked per episode (`src/lib/cost_tracker.py`). Episode model has fields for `llm_input_tokens`, `llm_output_tokens`, `llm_cost`, `tts_characters`, `tts_cost`, `total_cost`. LLM cost tracking is integrated; TTS cost tracking is TODO.
+LLM token usage and TTS character counts tracked per episode (`src/lib/cost_tracker.py`). Episode model has fields for `llm_input_tokens`, `llm_output_tokens`, `llm_cost`, `tts_characters`, `tts_cost`, `total_cost`. LLM cost tracking is integrated; TTS character counts are recorded but cost is always 0.0 since Kokoro runs locally.
 
 ### Database Models
 

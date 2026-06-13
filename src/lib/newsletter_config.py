@@ -18,6 +18,10 @@ class ProcessingConfig(BaseModel):
     length: str = Field(default="medium", description="Target podcast length")
     style: str = Field(default="conversational", description="Podcast style")
     focus_areas: List[str] = Field(default_factory=list, description="Topics to emphasize")
+    mode: str = Field(
+        default="monologue",
+        description="Script mode: 'monologue' (single narrator) or 'dialogue' (two hosts)",
+    )
 
     @field_validator("length")
     @classmethod
@@ -36,6 +40,50 @@ class ProcessingConfig(BaseModel):
         if v not in valid_styles:
             raise ValueError(f"Style must be one of {valid_styles}")
         return v
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        valid_modes = ["monologue", "dialogue"]
+        if v not in valid_modes:
+            raise ValueError(f"Mode must be one of {valid_modes}")
+        return v
+
+
+class TTSProfileConfig(BaseModel):
+    """Per-newsletter TTS rendering settings.
+
+    Settings here are passed through to the Kokoro pipeline
+    (src.services.tts_generator.TTSGenerator.generate_speech).
+    """
+    preset: Optional[str] = Field(
+        default=None,
+        description="Named preset from src/lib/tts_engine/data/presets/*.json",
+    )
+    voice: Optional[str] = Field(
+        default=None,
+        description="Primary voice spec, e.g. 'af_heart' or 'af_heart:0.7,af_nicole:0.3'",
+    )
+    quote_voice: Optional[str] = Field(
+        default=None, description="Secondary voice for blockquotes ('none' to disable)"
+    )
+    voice_a: Optional[str] = Field(default=None, description="Dialogue mode: first speaker voice")
+    voice_b: Optional[str] = Field(default=None, description="Dialogue mode: second speaker voice")
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    quote_speed: float = Field(default=0.85, ge=0.5, le=2.0)
+    dialogue_speed: float = Field(default=0.95, ge=0.5, le=2.0)
+    pronunciations: Optional[str] = Field(
+        default=None,
+        description="Bundled dict name (e.g. 'ai_tech') or path to a JSON file",
+    )
+    extra_pronunciations: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Inline pronunciation overrides merged on top of the dict",
+    )
+    expand_abbrev: bool = Field(default=True, description="Expand abbreviations (GPU -> G.P.U.)")
+    target_lufs: float = Field(
+        default=-16.0, description="loudnorm target: -16 podcast, -18 audiobook"
+    )
 
 
 class OutputConfig(BaseModel):
@@ -88,6 +136,7 @@ class NewsletterProfile(BaseModel):
     rss_feed: Optional[str] = Field(default=None, description="RSS feed URL")
     url_pattern: Optional[str] = Field(default=None, description="URL pattern for matching")
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
+    tts: TTSProfileConfig = Field(default_factory=TTSProfileConfig)
     output: OutputConfig
     podcast_metadata: PodcastMetadata
     extraction: Optional[ExtractionConfig] = Field(default=None)

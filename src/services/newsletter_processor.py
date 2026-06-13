@@ -302,6 +302,30 @@ class NewsletterProcessor:
                 options["target_length"] = newsletter_profile.processing.length
             if "focus_areas" not in options and newsletter_profile.processing.focus_areas:
                 options["focus_areas"] = newsletter_profile.processing.focus_areas
+            if "mode" not in options:
+                options["mode"] = newsletter_profile.processing.mode
+
+            # Pass TTS profile settings under a nested key so we don't collide
+            # with LLM options.
+            tts_cfg = newsletter_profile.tts
+            options.setdefault("tts", {})
+            tts_opts = options["tts"]
+            for key in (
+                "preset",
+                "voice",
+                "quote_voice",
+                "voice_a",
+                "voice_b",
+                "speed",
+                "quote_speed",
+                "dialogue_speed",
+                "pronunciations",
+                "extra_pronunciations",
+                "expand_abbrev",
+                "target_lufs",
+            ):
+                if key not in tts_opts:
+                    tts_opts[key] = getattr(tts_cfg, key)
         
         # Capture attributes to avoid lazy loading issues after commit
         newsletter_id = newsletter.id
@@ -349,7 +373,8 @@ class NewsletterProcessor:
                 title=extracted.title,
                 style=options.get("style", "conversational"),
                 target_length=options.get("target_length", "medium"),
-                focus_areas=options.get("focus_areas")
+                focus_areas=options.get("focus_areas"),
+                mode=options.get("mode", "monologue"),
             )
             
             # Create episode record
@@ -395,34 +420,38 @@ class NewsletterProcessor:
                 date=newsletter.publication_date.strftime("%Y-%m-%d") if newsletter.publication_date else datetime.now().strftime("%Y-%m-%d")
             )
 
-            # Temporarily update TTS generator output directory to use profile-based folder
-            original_output_dir = self.tts_generator.output_dir
-            self.tts_generator.output_dir = target_file_path.parent
-            self.tts_generator.client.output_dir = str(target_file_path.parent)
+            # Ensure target directory exists (the engine writes directly here)
+            target_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Determine TTS mode: 'dialogue' if the LLM produced a dialogue script,
+            # otherwise 'text' (monologue).
+            script_mode = options.get("mode", "monologue")
+            tts_mode = "dialogue" if script_mode == "dialogue" else "text"
+            tts_opts = options.get("tts", {})
 
             tts_response = await self.tts_generator.generate_speech(
                 text=summary_response.summary,
-                voice=options.get("voice"),
-                speed=options.get("speed", 1.0),
+                voice=tts_opts.get("voice") or options.get("voice"),
+                speed=tts_opts.get("speed", options.get("speed", 1.0)),
                 pitch=options.get("pitch", 1.0),
                 output_format=options.get("output_format", "mp3"),
-                quality=options.get("quality", "standard")
+                quality=options.get("quality", "standard"),
+                mode=tts_mode,
+                preset=tts_opts.get("preset"),
+                quote_voice=tts_opts.get("quote_voice"),
+                voice_a=tts_opts.get("voice_a"),
+                voice_b=tts_opts.get("voice_b"),
+                quote_speed=tts_opts.get("quote_speed", 0.85),
+                dialogue_speed=tts_opts.get("dialogue_speed", 0.95),
+                pronunciations=tts_opts.get("pronunciations"),
+                extra_pronunciations=tts_opts.get("extra_pronunciations"),
+                expand_abbrev=tts_opts.get("expand_abbrev", True),
+                target_lufs=tts_opts.get("target_lufs", -16.0),
+                output_path=str(target_file_path),
             )
 
-            # Restore original output directory
-            self.tts_generator.output_dir = original_output_dir
-            self.tts_generator.client.output_dir = str(original_output_dir)
-
-            # Rename file to use profile-based naming
-            import shutil
+            # The engine writes straight to target_file_path; store its relative form.
             from pathlib import Path
-            generated_file = Path(tts_response.audio_file_path)
-            if generated_file != target_file_path and generated_file.exists():
-                shutil.move(str(generated_file), str(target_file_path))
-                tts_response.audio_file_path = str(target_file_path)
-                logger.info(f"Moved audio file to: {target_file_path}")
-
-            # Store relative path in database
             relative_path = self.storage_manager.get_relative_path(Path(tts_response.audio_file_path))
 
             # Update episode with audio info
@@ -437,11 +466,15 @@ class NewsletterProcessor:
                 tts_voice=tts_response.voice
             )
 
-            # Set TTS cost tracking info (TODO: Re-enable after fixing async issues)
-            # episode.set_cost_info(
-            #     tts_characters=tts_response.characters,
-            #     tts_cost=tts_response.cost
-            # )
+            # Set TTS cost tracking info (Kokoro is local → zero cost,
+            # but we record characters for analytics consistency).
+            try:
+                episode.set_cost_info(
+                    tts_characters=tts_response.characters,
+                    tts_cost=0.0,
+                )
+            except Exception as exc:
+                logger.warning(f"Could not record TTS cost info: {exc}")
 
             episode.update_status(EpisodeStatus.COMPLETED)
             await db.commit()

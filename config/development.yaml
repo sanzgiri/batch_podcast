@@ -37,13 +37,13 @@ ai_services:
       max_tokens: 2000
 
   tts:
-    provider: "unreal_speech"  # or "kokoro"
-    kokoro:
-      base_url: "http://localhost:8080"
-      voice: "default"
-    unreal_speech:
-      api_key: "${OPENAI_API_KEY}"
-      voice: "Liv"
+    provider: "kokoro_tts"   # local rendering via src/lib/tts_engine
+    kokoro_tts:
+      voice: "af_heart"      # fallback voice; per-newsletter profiles override
+      lang_code: "a"         # 'a' = American English
+      speed: 1.0
+    # NOTE: cloud TTS (unreal_speech, elevenlabs) is intentionally disabled.
+    # All TTS happens locally via Kokoro.
 
 storage:
   type: "local"  # or "s3"

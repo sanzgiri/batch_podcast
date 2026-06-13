@@ -1,53 +1,61 @@
-# Quick Start Guide - User Story 1
+# Quick Start Guide
 
 ## Newsletter Podcast Generator - Getting Started
 
-This guide will help you test the newly implemented User Story 1 functionality for converting newsletters to podcast episodes.
+This guide will help you test the newsletter-to-podcast conversion pipeline.
 
 ### Prerequisites
 
-✅ Python 3.9+ installed
+✅ Python 3.11+ installed
 ✅ Virtual environment activated (`.venv`)
-✅ Dependencies installed (completed)
+✅ Dependencies installed (`pip install -r requirements.txt`)
+✅ `ffmpeg` and `espeak-ng` installed (`brew install ffmpeg espeak-ng` on macOS)
+✅ [Ollama](https://ollama.ai) running locally with a model pulled (e.g. `ollama pull qwen2.5:3b-instruct`)
+
+Note: Kokoro voicepacks download automatically on first TTS run.
 
 ### Configuration Setup
 
-Before running the application, you need to configure the AI services:
+Before running the application, copy the templates and adjust if needed:
 
-1. **Create a configuration file:**
+1. **Create configuration files:**
 ```bash
-cp config/development.yaml.example config/development.yaml
+cp config/development.yaml.template config/development.yaml
+cp config/newsletters.yaml.template config/newsletters.yaml
 ```
 
-2. **Add your API keys to `config/development.yaml` or environment variables:**
+2. **Default config is fully local — Ollama + Kokoro.** Edit `config/development.yaml` only if you want to switch the LLM model or use OpenAI:
 
-For OpenAI (recommended for testing):
 ```yaml
 ai_services:
   llm:
-    provider: "openai"
-    openai:
-      api_key: "your-openai-api-key-here"
-      model: "gpt-5-nano"
-  tts:
-    provider: "unreal_speech"
-    unreal_speech:
-      api_key: "your-unreal-speech-api-key-here"
-```
-
-For local services (Ollama + Kokoro):
-```yaml
-ai_services:
-  llm:
-    provider: "ollama"
+    provider: "ollama"          # local — default
     ollama:
       base_url: "http://localhost:11434"
-      model: "llama2"
+      model: "qwen2.5:3b-instruct"
   tts:
-    provider: "kokoro"
-    kokoro:
-      base_url: "http://localhost:8080"
+    provider: "kokoro_tts"      # local — only option supported
+    kokoro_tts:
+      voice: "af_heart"
+      lang_code: "a"
+      speed: 1.0
 ```
+
+3. **Configure per-newsletter behavior in `config/newsletters.yaml`** — e.g. `the-batch` ships configured for two-host dialogue with the `podcast_two_host` preset and `ai_tech` pronunciation dict:
+
+```yaml
+newsletters:
+  the-batch:
+    processing:
+      length: "long"
+      mode: "dialogue"            # Host/Guest two-voice script
+    tts:
+      preset: "podcast_two_host"  # af_heart + am_michael alternating
+      pronunciations: "ai_tech"   # Sutskever, Karpathy, Llama, etc.
+      target_lufs: -16.0
+```
+
+See `src/lib/tts_engine/data/presets/` and `src/lib/tts_engine/data/pronunciations/` for all bundled options.
 
 ### Database Initialization
 
@@ -79,10 +87,12 @@ python -m src status <newsletter-id>
 python -m src health
 ```
 
-#### 5. View Available Voices
+#### 5. View Available Voices, Presets, and Pronunciation Dicts
 ```bash
 python -m src voices
 ```
+The output now includes the available bundled presets and pronunciation dictionaries
+that can be referenced from `newsletters.yaml`.
 
 ### Testing the API
 
@@ -227,37 +237,40 @@ rm -rf data/  # Remove old data
 python -c "import asyncio; from src.lib.database import init_database; asyncio.run(init_database())"
 ```
 
-#### API Key Issues
-Verify your API keys are set:
+#### 4. Check API Key Configuration (only if using OpenAI)
 ```bash
-python -c "from src.lib.config import get_config; c=get_config(); print(f'OpenAI: {c.llm.openai.api_key[:10]}... TTS: {c.tts.unreal_speech.api_key[:10]}...')"
+python -c "from src.lib.config import get_config; c=get_config(); print(f'OpenAI: {c.llm.openai.api_key[:10] if c.llm.openai.api_key else \"(not set)\"}')"
 ```
+
+With the default Ollama+Kokoro config, no API keys are required.
 
 ### Expected Behavior
 
 When processing completes successfully:
 1. Newsletter status progresses through: `pending` → `extracting` → `summarizing` → `generating_audio` → `completed`
-2. An Episode record is created with audio file details
-3. MP3 file is generated in the configured audio directory (default: `./data/audio/`)
-4. Logs show detailed progress information
+2. An Episode record is created with audio file details, LLM token usage, and TTS character count
+3. MP3 file is generated under `data/audio/<newsletter-slug>/` (e.g. `data/audio/the-batch/the-batch-YYYY-MM-DD-issue-NNN.mp3`)
+4. Audio is loudness-normalized to broadcast standard (`-16 LUFS` for podcasts)
+5. For dialogue-mode profiles, voices alternate between Host and Guest at every turn
+6. Logs show detailed progress information at each pipeline step
 
 ### Next Steps
 
-Once User Story 1 is verified:
-- Move to User Story 2: Podcast Feed Management (cloud upload + RSS)
-- Move to User Story 3: Service Configuration UI
-- Complete Phase 6: Production polish
+Once processing is verified:
+- Move to Phase 2: RSS feed parsing + batch processing CLI
+- Move to Phase 3: MP3 ID3 metadata tagging + M3U playlist generation
 
 ### Support
 
 For issues or questions:
-1. Check logs in the console output
-2. Review the completion documentation in `docs/USER_STORY_1_COMPLETION.md`
-3. Examine the test files for usage examples
-4. Check configuration in `config/development.yaml`
+1. Check logs in the console output (and `logs/app_dev.log`)
+2. Review `STATUS.md` for current known issues
+3. See `CLAUDE.md` for architecture overview
+4. Examine the test files for usage examples (`tests/unit/test_tts_engine.py` covers the TTS engine surface)
+5. Check configuration in `config/development.yaml` and `config/newsletters.yaml`
 
 ---
 
-**Status:** Ready for testing
+**Status:** Production-ready (Phase 1 complete; Phase 2 pending)
 **Version:** 0.1.0
-**Last Updated:** October 16, 2025
+**Last Updated:** June 13, 2026

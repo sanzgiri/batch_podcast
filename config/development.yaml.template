@@ -39,7 +39,7 @@ ai_services:
   tts:
     provider: "kokoro_tts"
     kokoro_tts:
-      voice: "af_kore"
+      voice: "af_heart"
       lang_code: "a"
       speed: 1.0
 

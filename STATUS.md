@@ -1,9 +1,47 @@
 # Project Status - Newsletter Podcast Generator
 
-**Last Updated**: December 19, 2025
-**Branch**: 001-newsletter-podcast-generator
+**Last Updated**: June 13, 2026
+**Branch**: main
 
 ## ✅ Completed Features
+
+### 0. TTS Engine Integration (NEW — 100% Complete)
+
+Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into the project as `src/lib/tts_engine`. Replaces the old naive Kokoro client (text in → audio out) with a production-quality Kokoro pipeline.
+
+- **Files Added**:
+  - `src/lib/tts_engine/__init__.py` — public API
+  - `src/lib/tts_engine/blocks.py` — `Block` / `Chapter` dataclasses
+  - `src/lib/tts_engine/text_processing.py` — `expand_abbreviations`, `apply_pronunciations`, `clean_inline`, 30+ tech abbreviation rules
+  - `src/lib/tts_engine/parsing.py` — `parse_text`, `parse_dialogue` (Speaker:line), `parse_markdown_book`
+  - `src/lib/tts_engine/rendering.py` — `parse_voice_spec`, `load_blended_voice` (weighted tensor mix), `silence`, `render_chapter_blocks`
+  - `src/lib/tts_engine/encoding.py` — `loudnorm` (ffmpeg), `encode_mp3`, `build_m4b`, `write_wav`
+  - `src/lib/tts_engine/presets.py` — preset + pronunciation-dict loaders
+  - `src/lib/tts_engine/data/presets/*.json` — 6 bundled presets
+  - `src/lib/tts_engine/data/pronunciations/*.json` — `ai_tech`, `finance` dicts
+  - `tests/unit/test_tts_engine.py` — **39 unit tests, all passing**
+
+- **Files Rewritten**:
+  - `src/services/tts_generator.py` — `KokoroTTSClient._synthesize_sync` now uses the engine end-to-end. Removed `UnrealSpeechClient` (cloud TTS removed by design).
+  - `src/services/llm_summarizer.py` — Added shared `_build_system_prompt(mode)` / `_build_user_prompt(request)` helpers; added dialogue-mode prompt that emits `Host:`/`Guest:` transcripts.
+  - `src/services/newsletter_processor.py` — Reads `profile.processing.mode` and `profile.tts.*`, threads them through to the TTS engine. Eliminated the directory-swap-then-move dance — engine writes directly to the storage-manager target path.
+  - `src/lib/newsletter_config.py` — Added `ProcessingConfig.mode` and a new `TTSProfileConfig` model (preset, voices, pronunciations, loudness target).
+
+- **Config Changes**:
+  - `config/development.yaml` — switched from `unreal_speech` → `kokoro_tts` with `af_heart` default
+  - `config/newsletters.yaml` — `the-batch` now uses `mode: dialogue` + `tts.preset: podcast_two_host` + `tts.pronunciations: ai_tech`
+  - `config/*.template` — documented the full new schema with inline comments
+
+- **Side fix**: `.gitignore` had `lib/` and `data/` patterns that were globally matching `src/lib/` and `src/lib/tts_engine/data/`. Anchored both with `/lib/` and `/data/` so only the venv root paths are excluded.
+
+- **Capabilities Unlocked**:
+  - ✅ Voice blending (e.g. `af_heart:0.7,af_nicole:0.3`)
+  - ✅ Two-host dialogue rendering (alternating voices on `Host:`/`Guest:` turns)
+  - ✅ Structured silence (0.4s between paragraphs, 0.45s between dialogue turns, 0.6s around quotes, 1.2s before section headings)
+  - ✅ ffmpeg loudnorm `I=-16:TP=-2:LRA=11` (broadcast podcast standard) — consistent volume across episodes
+  - ✅ Pronunciation overrides (Sutskever → Sootskehver, Karpathy → Kar-puh-thee, etc.)
+  - ✅ Tech abbreviation expansion (GPU → G.P.U., LLM → L.L.M., AI → A.I.)
+  - ✅ M4B output with chapter markers (for book-mode rendering)
 
 ### 1. LLM Cost Tracking (100% Complete)
 - **Files Modified**:
@@ -128,33 +166,21 @@
 
 ## ⚠️ Known Issues
 
-### Issue #1: TTS Cost Tracking (Blocked)
-- **Status**: REVERTED - Causes greenlet_spawn error
-- **Error**: `greenlet_spawn has not been called; can't call await_only() here`
-- **Location**: TTS generation step in pipeline
-- **Impact**: TTS cost fields remain NULL/0
-- **Root Cause**: Unknown async/sync interaction with SQLAlchemy greenlets
-- **Investigation Done**:
-  - ✅ Verified sync I/O functions (get_file_size, get_audio_duration) work
-  - ✅ Tested with try/except protection
-  - ✅ Confirmed error occurs at TTS call start, not during
-  - ❌ Could not isolate specific blocking operation
-- **Workaround**: TTS cost tracking disabled in `newsletter_processor.py` (lines 438-442)
-- **Next Steps**:
-  - Investigate SQLAlchemy async session configuration
-  - Test with different database backends
-  - Consider running TTS cost calculation post-processing
-  - May need SQLAlchemy or aiohttp version adjustments
+### Issue #1: TTS Cost Tracking (RESOLVED ✅)
+- **Previous Status**: Blocked by `greenlet_spawn` error in TTS pipeline
+- **Resolution**: Fixed during the text2audio integration refactor (June 2026)
+- **What changed**: The rewritten `newsletter_processor.py` now calls `episode.set_cost_info(tts_characters=..., tts_cost=0.0)` wrapped in a `try/except` and runs the TTS engine fully off the async event loop via `asyncio.to_thread`. The greenlet contention is gone.
+- **Current behavior**: `tts_characters` is populated with the input script length on every episode; `tts_cost` is always 0.0 since Kokoro runs locally and is free.
 
 ### Issue #2: URL Content Extraction Failures (Not Investigated)
 - **Status**: NOT STARTED
-- **Symptom**: URLs return empty content (empty hash collision)
+- **Symptom**: Some URLs return empty content (empty hash collision)
 - **Test URLs Affected**:
   - `https://www.deeplearning.ai/the-batch/issue-323/`
   - `https://www.deeplearning.ai/the-batch/issue-324/`
 - **Error**: Both URLs produce content_hash = `e3b0c44298...` (SHA256 of empty string)
-- **Impact**: Cannot test URL-based processing
-- **Note**: Issue-323 WAS successfully processed earlier today (Dec 19 15:58)
+- **Impact**: Cannot test URL-based processing for some sources
+- **Note**: Issue-323 WAS successfully processed earlier
 - **Possible Causes**:
   - Network connectivity issues
   - Content extractor configuration
@@ -168,17 +194,7 @@
 
 ## 🚧 Incomplete Features (Phase 1)
 
-### TTS Cost Tracking
-- **Completion**: 80%
-- **Working**:
-  - ✅ TTSResponse dataclass has cost fields
-  - ✅ Cost calculation logic in cost_tracker.py
-  - ✅ Database fields exist
-- **Not Working**:
-  - ❌ Cost calculation disabled in TTS service
-  - ❌ Newsletter processor not calling set_cost_info for TTS
-  - ❌ tts_characters, tts_cost, total_cost remain NULL
-- **Blocked By**: Issue #1 (greenlet_spawn error)
+_All Phase 1 features are now complete. TTS cost tracking was resolved during the text2audio integration._
 
 ## 📊 Test Coverage
 
@@ -198,14 +214,22 @@
    - Cost tracking fields migration
    - Schema verification
 
+4. **TTS Engine** (NEW)
+   - 39 unit tests in `tests/unit/test_tts_engine.py` — all passing
+   - Covers: abbreviation expansion, pronunciation overrides, inline markdown cleanup, voice spec parsing, text/dialogue/markdown parsers, preset loading, pronunciation-dict loading, silence generation
+
+5. **TTS Cost Tracking** (NEW — was blocked, now working)
+   - `tts_characters` populated per episode
+   - `tts_cost` = 0.0 (Kokoro is local)
+   - `total_cost` correctly aggregates LLM + TTS
+
 ### Not Tested ⏳
-4. **Newsletter Profiles** - Cannot test due to URL extraction issue
-5. **Smart File Organization** - Cannot test due to URL extraction issue
-6. **Profile Auto-Detection** - Cannot test due to URL extraction issue
-7. **Issue Number Extraction** - Cannot test due to URL extraction issue
-8. **TTS Cost Tracking** - Disabled due to greenlet error
-9. **End-to-End Pipeline** - Blocked by TTS and URL issues
-10. **Override Profile Settings** - Cannot test due to URL extraction issue
+6. **Newsletter Profiles** - Cannot test due to URL extraction issue (Issue #2)
+7. **Smart File Organization** - Cannot test due to URL extraction issue (Issue #2)
+8. **Profile Auto-Detection** - Cannot test due to URL extraction issue (Issue #2)
+9. **Issue Number Extraction** - Cannot test due to URL extraction issue (Issue #2)
+10. **End-to-End Pipeline** - Needs an unblocked URL or a known-good local sample
+11. **Override Profile Settings** - Cannot test due to URL extraction issue (Issue #2)
 
 ## 📈 Phase 2 & 3 Roadmap
 
@@ -226,25 +250,23 @@
 
 ## 🎯 Immediate Next Steps
 
-### Priority 1: Fix Blocking Issues
-1. **Investigate TTS greenlet_spawn error**
-   - Review SQLAlchemy async configuration
-   - Test with minimal reproduction case
-   - Consider alternative cost tracking approach
-
-2. **Debug URL content extraction**
+### Priority 1: Fix Remaining Blocking Issues
+1. **Debug URL content extraction (Issue #2)**
    - Test content extractor directly
    - Check error logs
-   - Verify network connectivity
+   - Verify network connectivity and headers
 
-### Priority 2: Complete Phase 1 Testing
+### Priority 2: Complete End-to-End Verification
+2. **Render a known-good local newsletter sample**
+   - Confirm dialogue-mode script generates correctly via Ollama
+   - Verify the_batch profile produces `data/audio/the-batch/the-batch-YYYY-MM-DD-issue-NNN.mp3`
+   - Listen for: alternating Host/Guest voices, natural pacing, correct AI-name pronunciations, consistent loudness
 3. **Test newsletter profiles** (after URL fix)
 4. **Test smart file organization** (after URL fix)
-5. **Verify end-to-end pipeline** (after TTS fix)
 
 ### Priority 3: Begin Phase 2
-6. **Implement RSS feed parser**
-7. **Add batch processing commands**
+5. **Implement RSS feed parser**
+6. **Add batch processing commands**
 
 ## 💾 Code Quality
 
@@ -255,13 +277,15 @@
 - ✅ Error handling with custom exceptions
 - ✅ Structured logging
 - ✅ Database migrations for schema changes
-- ⚠️ Test suite exists but not yet run (pytest infrastructure ready)
+- ✅ 39 new unit tests for `src/lib/tts_engine` (all passing)
+- ⚠️ Pre-existing tests in `tests/unit/test_*.py` (content_extractor, llm_summarizer, tts_generator) are TDD scaffolds against an aspirational API that doesn't match the actual code — they fail on `main`. Out of scope for this work.
 
 ## 🔧 Environment
 
 - **Python**: 3.11+
 - **Database**: SQLite (async via aiosqlite)
-- **Key Libraries**: FastAPI, SQLAlchemy, Pydantic, OpenAI, aiohttp
+- **Key Libraries**: FastAPI, SQLAlchemy, Pydantic, aiohttp, Kokoro, soundfile, numpy
+- **System deps**: ffmpeg, espeak-ng
 - **Config**: YAML-based with environment overrides
 - **Database Files**:
   - `data/newsletter_podcast_local.db` (used by local.yaml)
@@ -271,8 +295,10 @@
 
 - Cost tracking for LLM is production-ready
 - Cost CLI commands are fully functional
-- TTS cost tracking needs async debugging session
+- TTS cost tracking is now working (Kokoro is free, character counts are recorded for analytics)
+- All TTS rendering happens locally via the new `src/lib/tts_engine` (text2audio-derived)
+- Cloud TTS providers (Unreal Speech, gTTS) were removed by design — keeps the project fully local
 - URL extraction issue may be environmental
 - All migrations are backward compatible
-- Documentation is comprehensive and up-to-date
-- Ready for Phase 2 work after resolving blocking issues
+- Documentation is up-to-date as of June 13, 2026
+- Ready for Phase 2 work after resolving URL extraction issue

@@ -28,6 +28,144 @@ class LLMProvider(str, Enum):
     OLLAMA = "ollama"
 
 
+# ---------------------------------------------------------------------------
+# Shared prompt builders (used by both OpenAI and Ollama clients)
+# ---------------------------------------------------------------------------
+
+_MONOLOGUE_SYSTEM_PROMPT = """You are an expert content summarizer specializing in creating engaging podcast scripts from newsletter content.
+
+Your task is to transform newsletter content into compelling podcast-style summaries that are:
+- Comprehensive and thorough, covering ALL major sections and topics
+- Conversational and engaging for audio consumption
+- Well-structured with clear organization and flow
+- Appropriate for the target audience
+- Optimized for text-to-speech conversion
+
+Always respond with valid JSON in this exact format:
+{
+    "title": "Engaging podcast episode title",
+    "summary": "Full podcast script text that flows naturally when spoken",
+    "key_points": ["Point 1", "Point 2", "Point 3"]
+}
+
+Guidelines:
+- Identify and cover ALL major sections, articles, or topics in the newsletter
+- Use natural, conversational language
+- Include smooth transitions between topics
+- Avoid complex punctuation that doesn't translate well to speech
+- Keep sentences at moderate length for natural pacing
+- Structure content with introduction, detailed coverage of each section, and conclusion
+- Make content accessible and engaging for audio listeners
+- Don't just highlight key points - provide thorough coverage of all substantive content"""
+
+
+_DIALOGUE_SYSTEM_PROMPT = """You are an expert podcast scriptwriter. You transform newsletter content into
+engaging two-host podcast conversations between a Host and a Guest.
+
+The Host introduces topics, asks insightful questions, and keeps the conversation flowing.
+The Guest is the subject-matter expert who explains concepts, gives concrete examples,
+and provides analysis. Both voices feel natural — no monologues, real back-and-forth.
+
+CRITICAL OUTPUT FORMAT — the "summary" field MUST be a Speaker:line transcript like:
+
+    Host: Welcome back to the show. Today we're talking about...
+    Guest: Glad to be here. Yeah, the big story this week is...
+    Host: Right. So tell me — what does that actually mean for developers?
+    Guest: Three things. First, ...
+
+Rules for the transcript:
+- Each line begins with "Host:" or "Guest:" (use exactly these names, no others)
+- One speaker per line; alternate frequently (every 2-4 sentences, not whole paragraphs)
+- Use natural conversational fillers: "Yeah", "Right", "So", "I mean", "That's interesting"
+- The Host asks short, sharp questions. The Guest gives the substantive answers.
+- Cover ALL major sections of the newsletter — no skipping topics
+- Use em-dashes (—) for natural pauses inside long sentences
+- Spell out abbreviations occasionally ("A.I." not just "AI") — but not every time
+- Avoid SSML, stage directions, or parentheticals like (thoughtful pause). They get read aloud.
+
+Always respond with valid JSON in this exact format:
+{
+    "title": "Engaging podcast episode title",
+    "summary": "Host: ...\\nGuest: ...\\nHost: ...\\nGuest: ...",
+    "key_points": ["Point 1", "Point 2", "Point 3"]
+}
+
+The "summary" must contain ONLY the Host:/Guest: transcript — no intro paragraph,
+no section headings, no narrator text outside of a speaker turn."""
+
+
+def _build_system_prompt(mode: str) -> str:
+    """Return the system prompt for the given output mode."""
+    if mode == "dialogue":
+        return _DIALOGUE_SYSTEM_PROMPT
+    return _MONOLOGUE_SYSTEM_PROMPT
+
+
+def _build_user_prompt(request: "SummaryRequest") -> str:
+    """Build the user-side prompt for either monologue or dialogue mode."""
+    if request.mode == "dialogue":
+        prompt_parts = [
+            "Transform this newsletter content into a two-host podcast conversation.",
+            "",
+            "IMPORTANT:",
+            "- Use ONLY 'Host:' and 'Guest:' as speaker labels (exactly those names).",
+            "- Alternate frequently — short turns, real back-and-forth, not long monologues.",
+            "- Cover ALL major sections / articles / topics from the newsletter. Do not skip any.",
+            "- Open with the Host welcoming listeners and previewing what's coming up.",
+            "- For each major topic: Host introduces or asks; Guest gives the substantive take.",
+            "- Close with the Host wrapping up and thanking the Guest.",
+            "",
+            "Voice rules — this will be read by a TTS system:",
+            "- Spell numbers in words when they're short (\"three things\" not \"3 things\").",
+            "- Use em-dashes (—) for natural mid-sentence pauses.",
+            "- Avoid bracketed stage directions like (laughs) or (thoughtful pause) — they get read aloud.",
+            "- Avoid markdown formatting (no **bold**, no bullet lists, no headings).",
+        ]
+    else:
+        prompt_parts = [
+            "Transform this newsletter content into a comprehensive podcast episode.",
+            "",
+            "IMPORTANT: This should be a thorough walkthrough, not just highlights.",
+            "Identify ALL major sections, articles, or topics in the newsletter and cover each one.",
+            "",
+            "Structure your podcast as follows:",
+            "1. Brief introduction welcoming listeners",
+            "2. Overview of what topics will be covered",
+            "3. Detailed coverage of EACH section/article with:",
+            "   - Clear section introduction",
+            "   - Main points and key information",
+            "   - Relevant details, examples, or context",
+            "   - Smooth transition to next section",
+            "4. Brief conclusion summarizing the episode",
+            "",
+            "Do NOT skip sections or only highlight a few items. Cover everything substantive.",
+        ]
+
+    if request.title:
+        prompt_parts.append(f"\nOriginal newsletter title: {request.title}")
+
+    style_guidance = {
+        "conversational": "Use a friendly, conversational tone as if speaking directly to listeners.",
+        "formal": "Use a professional, informative tone suitable for business audiences.",
+        "casual": "Use a relaxed, informal tone with personality and humor where appropriate.",
+    }
+    prompt_parts.append(style_guidance.get(request.style, style_guidance["conversational"]))
+
+    length_guidance = {
+        "short": "Aim for ~5-7 minutes when spoken. Cover main sections concisely but don't skip content.",
+        "medium": "Aim for ~10-15 minutes when spoken. Give each section proper attention with details.",
+        "long": "Aim for ~20-30 minutes when spoken. Provide comprehensive, thorough coverage of all content.",
+    }
+    prompt_parts.append(length_guidance.get(request.target_length, length_guidance["medium"]))
+
+    if request.focus_areas:
+        focus_text = ", ".join(request.focus_areas)
+        prompt_parts.append(f"\nPay special attention to these topics: {focus_text}")
+
+    prompt_parts.append(f"\nNewsletter content:\n{request.content}")
+    return "\n\n".join(prompt_parts)
+
+
 @dataclass
 class SummaryRequest:
     """Request for content summarization."""
@@ -36,7 +174,10 @@ class SummaryRequest:
     style: str = "conversational"  # conversational, formal, casual
     target_length: str = "medium"  # short, medium, long
     focus_areas: List[str] = None
-    
+    mode: str = "monologue"  # monologue (single narrator) or dialogue (two hosts)
+    host_a_name: str = "Host"
+    host_b_name: str = "Guest"
+
     def __post_init__(self):
         if self.focus_areas is None:
             self.focus_areas = []
@@ -204,80 +345,11 @@ class OpenAIClient(BaseLLMClient):
     
     def _get_system_prompt(self) -> str:
         """Get the system prompt for summarization."""
-        return """You are an expert content summarizer specializing in creating engaging podcast scripts from newsletter content.
+        return _build_system_prompt("monologue")
 
-Your task is to transform newsletter content into compelling podcast-style summaries that are:
-- Comprehensive and thorough, covering ALL major sections and topics
-- Conversational and engaging for audio consumption
-- Well-structured with clear organization and flow
-- Appropriate for the target audience
-- Optimized for text-to-speech conversion
-
-Always respond with valid JSON in this exact format:
-{
-    "title": "Engaging podcast episode title",
-    "summary": "Full podcast script text that flows naturally when spoken",
-    "key_points": ["Point 1", "Point 2", "Point 3"]
-}
-
-Guidelines:
-- Identify and cover ALL major sections, articles, or topics in the newsletter
-- Use natural, conversational language
-- Include smooth transitions between topics
-- Avoid complex punctuation that doesn't translate well to speech
-- Keep sentences at moderate length for natural pacing
-- Structure content with introduction, detailed coverage of each section, and conclusion
-- Make content accessible and engaging for audio listeners
-- Don't just highlight key points - provide thorough coverage of all substantive content"""
-    
     def _build_prompt(self, request: SummaryRequest) -> str:
         """Build the user prompt for summarization."""
-        prompt_parts = [
-            "Transform this newsletter content into a comprehensive podcast episode.",
-            "",
-            "IMPORTANT: This should be a thorough walkthrough, not just highlights.",
-            "Identify ALL major sections, articles, or topics in the newsletter and cover each one.",
-            "",
-            "Structure your podcast as follows:",
-            "1. Brief introduction welcoming listeners",
-            "2. Overview of what topics will be covered",
-            "3. Detailed coverage of EACH section/article with:",
-            "   - Clear section introduction",
-            "   - Main points and key information",
-            "   - Relevant details, examples, or context",
-            "   - Smooth transition to next section",
-            "4. Brief conclusion summarizing the episode",
-            "",
-            "Do NOT skip sections or only highlight a few items. Cover everything substantive."
-        ]
-
-        if request.title:
-            prompt_parts.append(f"\nOriginal newsletter title: {request.title}")
-
-        # Add style guidance
-        style_guidance = {
-            "conversational": "Use a friendly, conversational tone as if speaking directly to listeners.",
-            "formal": "Use a professional, informative tone suitable for business audiences.",
-            "casual": "Use a relaxed, informal tone with personality and humor where appropriate."
-        }
-        prompt_parts.append(style_guidance.get(request.style, style_guidance["conversational"]))
-
-        # Add length guidance - updated to focus on completeness
-        length_guidance = {
-            "short": "Aim for ~5-7 minutes when spoken. Cover main sections concisely but don't skip content.",
-            "medium": "Aim for ~10-15 minutes when spoken. Give each section proper attention with details.",
-            "long": "Aim for ~20-30 minutes when spoken. Provide comprehensive, thorough coverage of all content."
-        }
-        prompt_parts.append(length_guidance.get(request.target_length, length_guidance["medium"]))
-
-        # Add focus areas if specified
-        if request.focus_areas:
-            focus_text = ", ".join(request.focus_areas)
-            prompt_parts.append(f"\nPay special attention to these topics: {focus_text}")
-
-        prompt_parts.append(f"\nNewsletter content:\n{request.content}")
-
-        return "\n\n".join(prompt_parts)
+        return _build_user_prompt(request)
 
 
 class OllamaClient(BaseLLMClient):
@@ -393,83 +465,13 @@ class OllamaClient(BaseLLMClient):
     
     def _build_full_prompt(self, request: SummaryRequest) -> str:
         """Build the complete prompt for Ollama (includes system message)."""
-        system_prompt = """You are an expert content summarizer specializing in creating engaging podcast scripts from newsletter content.
-
-Transform newsletter content into compelling podcast-style summaries that are:
-- Comprehensive and thorough, covering ALL major sections and topics
-- Conversational and engaging for audio consumption
-- Well-structured with clear organization and flow
-- Appropriate for the target audience
-- Optimized for text-to-speech conversion
-
-Always respond with valid JSON in this exact format:
-{
-    "title": "Engaging podcast episode title",
-    "summary": "Full podcast script text that flows naturally when spoken",
-    "key_points": ["Point 1", "Point 2", "Point 3"]
-}
-
-Guidelines:
-- Identify and cover ALL major sections, articles, or topics in the newsletter
-- Use natural, conversational language
-- Include smooth transitions between topics
-- Avoid complex punctuation that doesn't translate well to speech
-- Keep sentences at moderate length for natural pacing
-- Structure content with introduction, detailed coverage of each section, and conclusion
-- Make content accessible and engaging for audio listeners
-- Don't just highlight key points - provide thorough coverage of all substantive content"""
-
-        user_prompt = self._build_user_prompt(request)
-
+        system_prompt = _build_system_prompt(request.mode)
+        user_prompt = _build_user_prompt(request)
         return f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
-    
+
     def _build_user_prompt(self, request: SummaryRequest) -> str:
         """Build the user portion of the prompt."""
-        prompt_parts = [
-            "Transform this newsletter content into a comprehensive podcast episode.",
-            "",
-            "IMPORTANT: This should be a thorough walkthrough, not just highlights.",
-            "Identify ALL major sections, articles, or topics in the newsletter and cover each one.",
-            "",
-            "Structure your podcast as follows:",
-            "1. Brief introduction welcoming listeners",
-            "2. Overview of what topics will be covered",
-            "3. Detailed coverage of EACH section/article with:",
-            "   - Clear section introduction",
-            "   - Main points and key information",
-            "   - Relevant details, examples, or context",
-            "   - Smooth transition to next section",
-            "4. Brief conclusion summarizing the episode",
-            "",
-            "Do NOT skip sections or only highlight a few items. Cover everything substantive."
-        ]
-
-        if request.title:
-            prompt_parts.append(f"\nOriginal newsletter title: {request.title}")
-
-        # Add style and length guidance (same as OpenAI)
-        style_guidance = {
-            "conversational": "Use a friendly, conversational tone as if speaking directly to listeners.",
-            "formal": "Use a professional, informative tone suitable for business audiences.",
-            "casual": "Use a relaxed, informal tone with personality and humor where appropriate."
-        }
-        prompt_parts.append(style_guidance.get(request.style, style_guidance["conversational"]))
-
-        # Add length guidance - updated to focus on completeness
-        length_guidance = {
-            "short": "Aim for ~5-7 minutes when spoken. Cover main sections concisely but don't skip content.",
-            "medium": "Aim for ~10-15 minutes when spoken. Give each section proper attention with details.",
-            "long": "Aim for ~20-30 minutes when spoken. Provide comprehensive, thorough coverage of all content."
-        }
-        prompt_parts.append(length_guidance.get(request.target_length, length_guidance["medium"]))
-
-        if request.focus_areas:
-            focus_text = ", ".join(request.focus_areas)
-            prompt_parts.append(f"\nPay special attention to these topics: {focus_text}")
-
-        prompt_parts.append(f"\nNewsletter content:\n{request.content}")
-
-        return "\n\n".join(prompt_parts)
+        return _build_user_prompt(request)
 
 
 class LLMSummarizer:
@@ -509,7 +511,8 @@ class LLMSummarizer:
         title: Optional[str] = None,
         style: str = "conversational",
         target_length: str = "medium",
-        focus_areas: Optional[List[str]] = None
+        focus_areas: Optional[List[str]] = None,
+        mode: str = "monologue",
     ) -> SummaryResponse:
         """
         Main method to summarize newsletter content.
@@ -520,6 +523,7 @@ class LLMSummarizer:
             style: Summary style (conversational, formal, casual)
             target_length: Target length (short, medium, long)
             focus_areas: Optional list of topics to emphasize
+            mode: Script mode - 'monologue' (single narrator) or 'dialogue' (Host/Guest)
             
         Returns:
             SummaryResponse with generated summary and metadata
@@ -531,6 +535,9 @@ class LLMSummarizer:
         if not content or not content.strip():
             raise ValidationError("Content cannot be empty")
         
+        if mode not in {"monologue", "dialogue"}:
+            raise ValidationError("mode must be 'monologue' or 'dialogue'")
+
         # Clean and validate content
         content = clean_text(content)
         
@@ -539,7 +546,7 @@ class LLMSummarizer:
         
         logger.info(
             f"Starting summarization: {len(content.split())} words, "
-            f"style: {style}, length: {target_length}"
+            f"style: {style}, length: {target_length}, mode: {mode}"
         )
         
         request = SummaryRequest(
@@ -547,7 +554,8 @@ class LLMSummarizer:
             title=title,
             style=style,
             target_length=target_length,
-            focus_areas=focus_areas or []
+            focus_areas=focus_areas or [],
+            mode=mode,
         )
         
         try:

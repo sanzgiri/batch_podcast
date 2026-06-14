@@ -10,9 +10,27 @@ This guide will help you test the newsletter-to-podcast conversion pipeline.
 ✅ Virtual environment activated (`.venv`)
 ✅ Dependencies installed (`pip install -r requirements.txt`)
 ✅ `ffmpeg` and `espeak-ng` installed (`brew install ffmpeg espeak-ng` on macOS)
-✅ [Ollama](https://ollama.ai) running locally with a model pulled (e.g. `ollama pull qwen2.5:3b-instruct`)
+✅ [Ollama](https://ollama.ai) running locally with an instruct model pulled (e.g. `ollama pull llama3.1:8b-instruct-q4_K_M`)
 
 Note: Kokoro voicepacks download automatically on first TTS run.
+
+### Smoke Test (verify end-to-end pipeline)
+
+Once setup is complete, run the bundled smoke test to verify the LLM→TTS pipeline works on your machine:
+
+```bash
+# Full end-to-end test (Ollama dialogue + Kokoro TTS, ~2 min)
+python scripts/smoke_test_render.py
+
+# TTS-only test with a canned script (faster iteration, ~50s)
+python scripts/smoke_test_render.py --skip-llm
+
+# Single-voice monologue mode
+python scripts/smoke_test_render.py --mode monologue
+```
+
+Output is written to `data/audio/smoke-test/` and opened automatically.
+Use `--no-open` to suppress auto-open.
 
 ### Configuration Setup
 
@@ -32,7 +50,7 @@ ai_services:
     provider: "ollama"          # local — default
     ollama:
       base_url: "http://localhost:11434"
-      model: "qwen2.5:3b-instruct"
+      model: "llama3.1:8b-instruct-q4_K_M"   # match whatever you've pulled via `ollama list`
   tts:
     provider: "kokoro_tts"      # local — only option supported
     kokoro_tts:

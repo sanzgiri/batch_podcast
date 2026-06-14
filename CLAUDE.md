@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Newsletter Podcast Generator - Convert newsletter content into podcast episodes using AI-powered summarization and text-to-speech. Built with Python 3.11+, FastAPI. Fully local: Ollama for LLM summarization, Kokoro for TTS (via the integrated `src/lib/tts_engine` pipeline derived from text2audio). No cloud APIs required.
 
+**Default LLM model**: `llama3.1:8b-instruct-q4_K_M` (configurable via `config/development.yaml`). Any Ollama instruct model works — `llama3.1:8b` is a good baseline that produces solid dialogue scripts; smaller models like `qwen2.5:3b-instruct` are faster but may drop structured JSON fields.
+
+**Smoke test**: `python scripts/smoke_test_render.py` runs an end-to-end pipeline against a hardcoded AI-news sample. Use `--skip-llm` for TTS-only iteration.
+
 ## Development Commands
 
 ### Setup

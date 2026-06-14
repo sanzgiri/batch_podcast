@@ -131,7 +131,7 @@ src/
 ## Prerequisites
 
 - Python 3.11+
-- [Ollama](https://ollama.ai) running with a model (e.g., `ollama pull qwen2.5:3b-instruct`)
+- [Ollama](https://ollama.ai) running with a model (e.g., `ollama pull llama3.1:8b-instruct-q4_K_M` — or any other instruct model you prefer; update `config/development.yaml` to match)
 - `ffmpeg` and `espeak-ng` installed (`brew install ffmpeg espeak-ng` on macOS)
 - Kokoro voicepacks download automatically on first TTS run (~few hundred MB, one-time)
 

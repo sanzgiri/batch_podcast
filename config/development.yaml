@@ -29,7 +29,7 @@ ai_services:
     provider: "ollama"  # or "openai"
     ollama:
       base_url: "http://localhost:11434"
-      model: "qwen2.5:3b-instruct"
+      model: "llama3.1:8b-instruct-q4_K_M"
       timeout: 300
     openai:
       api_key: "${OPENAI_API_KEY}"

@@ -101,6 +101,53 @@ def _build_system_prompt(mode: str) -> str:
     return _MONOLOGUE_SYSTEM_PROMPT
 
 
+def _normalize_parsed_response(parsed: dict, fallback_title: str = "Untitled Episode") -> dict:
+    """Normalize an LLM JSON response, tolerating missing/renamed fields.
+
+    Smaller local models (e.g. llama3.1:8b) often omit or rename fields. This
+    accepts common variations and ensures the three required fields exist.
+    """
+    # "summary" — the actual script body. Try common synonyms.
+    summary = (
+        parsed.get("summary")
+        or parsed.get("script")
+        or parsed.get("transcript")
+        or parsed.get("content")
+        or parsed.get("text")
+        or ""
+    )
+    if not summary or not isinstance(summary, str) or not summary.strip():
+        raise LLMError(
+            "LLM response missing 'summary' (or synonym: script/transcript/content). "
+            f"Got keys: {sorted(parsed.keys())}"
+        )
+
+    # "title" — fall back to the request title.
+    title = (
+        parsed.get("title")
+        or parsed.get("episode_title")
+        or parsed.get("headline")
+        or fallback_title
+    )
+    if not isinstance(title, str):
+        title = fallback_title
+
+    # "key_points" — fall back to empty list (it's metadata, not user-facing).
+    key_points = (
+        parsed.get("key_points")
+        or parsed.get("keypoints")
+        or parsed.get("highlights")
+        or parsed.get("takeaways")
+        or []
+    )
+    if not isinstance(key_points, list):
+        key_points = []
+    # Coerce items to strings (some models emit dicts here).
+    key_points = [str(p) if not isinstance(p, str) else p for p in key_points][:10]
+
+    return {"summary": summary.strip(), "title": str(title).strip(), "key_points": key_points}
+
+
 def _build_user_prompt(request: "SummaryRequest") -> str:
     """Build the user-side prompt for either monologue or dialogue mode."""
     if request.mode == "dialogue":
@@ -278,6 +325,7 @@ class OpenAIClient(BaseLLMClient):
                 # Parse response
                 content = result["choices"][0]["message"]["content"]
                 parsed = json.loads(content)
+                parsed = _normalize_parsed_response(parsed, fallback_title=request.title or "Untitled Episode")
 
                 processing_time = time.time() - start_time
 
@@ -405,6 +453,7 @@ class OllamaClient(BaseLLMClient):
                 # Parse response
                 content = result["response"]
                 parsed = json.loads(content)
+                parsed = _normalize_parsed_response(parsed, fallback_title=request.title or "Untitled Episode")
 
                 processing_time = time.time() - start_time
 

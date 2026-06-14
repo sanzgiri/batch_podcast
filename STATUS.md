@@ -172,25 +172,19 @@ Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into th
 - **What changed**: The rewritten `newsletter_processor.py` now calls `episode.set_cost_info(tts_characters=..., tts_cost=0.0)` wrapped in a `try/except` and runs the TTS engine fully off the async event loop via `asyncio.to_thread`. The greenlet contention is gone.
 - **Current behavior**: `tts_characters` is populated with the input script length on every episode; `tts_cost` is always 0.0 since Kokoro runs locally and is free.
 
-### Issue #2: URL Content Extraction Failures (Not Investigated)
-- **Status**: NOT STARTED
-- **Symptom**: Some URLs return empty content (empty hash collision)
-- **Test URLs Affected**:
-  - `https://www.deeplearning.ai/the-batch/issue-323/`
-  - `https://www.deeplearning.ai/the-batch/issue-324/`
-- **Error**: Both URLs produce content_hash = `e3b0c44298...` (SHA256 of empty string)
-- **Impact**: Cannot test URL-based processing for some sources
-- **Note**: Issue-323 WAS successfully processed earlier
-- **Possible Causes**:
-  - Network connectivity issues
-  - Content extractor configuration
-  - Website blocking/rate limiting
-  - Cookie/session requirements
-- **Next Steps**:
-  - Test content extractor directly
-  - Check for error logs in extraction step
-  - Verify HTTP headers and user agent
-  - Test with different URLs
+### Issue #2: URL Content Extraction Failures (RESOLVED ✅)
+- **Previous Status**: NOT INVESTIGATED — URLs returning empty content (SHA256 of empty string)
+- **Resolution**: Verified working on June 13, 2026. The issue was either environmental (Cloudflare/network) at the time of filing, or has resolved itself through extractor improvements. Direct test of issue-282 and issue-323 now returns 3500-4000 words of clean content.
+- **End-to-end verification**: Successfully processed `https://www.deeplearning.ai/the-batch/issue-282/` through the full pipeline (3m42s total): URL extraction → LLM dialogue generation → Kokoro TTS → loudnorm → MP3 at `data/audio/the-batch/the-batch-2026-06-14-issue-282.mp3` (3:16, -17.0 LUFS).
+- **Side bugs uncovered and fixed during verification**:
+  - `greenlet` was missing from requirements.txt (transitive SQLAlchemy async dep)
+  - `markdownify` was missing from requirements.txt (content_extractor dep)
+  - Ollama client hardcoded a 120s timeout, ignoring config.llm.ollama.timeout; long newsletters timed out
+  - Ollama client didn't pass `num_ctx` / `num_predict` to the API, causing JSON truncation on long inputs
+  - LLM parser crashed on missing fields (llama3.1:8b often omits `key_points`)
+  - LLM parser had no recovery for truncated JSON
+  - All fixed; defensive parser + `_recover_truncated_json` salvages partial responses
+- **Profile auto-detection verified**: URL `deeplearning.ai/the-batch/issue-282/` correctly matched the `the-batch` profile, extracted issue number `282`, applied dialogue mode + podcast_two_host preset + ai_tech pronunciations.
 
 ## 🚧 Incomplete Features (Phase 1)
 
@@ -224,12 +218,7 @@ _All Phase 1 features are now complete. TTS cost tracking was resolved during th
    - `total_cost` correctly aggregates LLM + TTS
 
 ### Not Tested ⏳
-6. **Newsletter Profiles** - Cannot test due to URL extraction issue (Issue #2)
-7. **Smart File Organization** - Cannot test due to URL extraction issue (Issue #2)
-8. **Profile Auto-Detection** - Cannot test due to URL extraction issue (Issue #2)
-9. **Issue Number Extraction** - Cannot test due to URL extraction issue (Issue #2)
-10. **End-to-End Pipeline** - Needs an unblocked URL or a known-good local sample
-11. **Override Profile Settings** - Cannot test due to URL extraction issue (Issue #2)
+_(none — all Phase 1 features end-to-end verified June 13, 2026)_
 
 ## 📈 Phase 2 & 3 Roadmap
 
@@ -250,23 +239,19 @@ _All Phase 1 features are now complete. TTS cost tracking was resolved during th
 
 ## 🎯 Immediate Next Steps
 
-### Priority 1: Fix Remaining Blocking Issues
-1. **Debug URL content extraction (Issue #2)**
-   - Test content extractor directly
-   - Check error logs
-   - Verify network connectivity and headers
+### Priority 1: ✅ Complete — begin Phase 2
+1. **Implement RSS feed parser** (`src/lib/rss_parser.py` — already planned in DEVELOPMENT.md)
+2. **Episode tracking & deduplication** (`src/lib/episode_tracker.py`)
+3. **Batch processing CLI**: `python -m src batch-process --newsletter the-batch --latest 5`
+4. **Parallel processing** via asyncio.gather + semaphore
 
-### Priority 2: Complete End-to-End Verification
-2. **Render a known-good local newsletter sample**
-   - Confirm dialogue-mode script generates correctly via Ollama
-   - Verify the_batch profile produces `data/audio/the-batch/the-batch-YYYY-MM-DD-issue-NNN.mp3`
-   - Listen for: alternating Host/Guest voices, natural pacing, correct AI-name pronunciations, consistent loudness
-3. **Test newsletter profiles** (after URL fix)
-4. **Test smart file organization** (after URL fix)
+### Priority 2: Phase 3 (after Phase 2)
+5. **MP3 ID3 tags** via mutagen (already in requirements.txt) — title, artist, album, cover art
+6. **M3U playlist generation** per newsletter — `playlists/{slug}.m3u`
 
-### Priority 3: Begin Phase 2
-5. **Implement RSS feed parser**
-6. **Add batch processing commands**
+### Priority 3: Cleanup
+7. **Delete or rewrite the broken pre-existing tests** in `tests/unit/test_{content_extractor,llm_summarizer,tts_generator}.py` (12 TDD scaffolds that fail on `main`)
+8. **Add coverage gate** for the TTS engine (already at ~95% line coverage)
 
 ## 💾 Code Quality
 

@@ -26,6 +26,8 @@ class OllamaConfig(BaseModel):
     model: str = "llama2"
     temperature: float = 0.7
     timeout: int = 300
+    num_ctx: int = 8192       # context window (input + output tokens)
+    num_predict: int = 4096   # max output tokens before truncation
 
 
 class LLMConfig(BaseModel):

@@ -8,6 +8,7 @@ aiofiles>=23.2.1
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 sqlalchemy>=2.0.23
+greenlet>=3.0.0  # required by sqlalchemy.ext.asyncio (not always pulled in automatically)
 alembic>=1.13.0
 feedgen>=0.9.0
 mutagen>=1.47.0

@@ -6,6 +6,7 @@ using Large Language Models (OpenAI GPT or Ollama local models).
 """
 
 import json
+import re
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
@@ -99,6 +100,51 @@ def _build_system_prompt(mode: str) -> str:
     if mode == "dialogue":
         return _DIALOGUE_SYSTEM_PROMPT
     return _MONOLOGUE_SYSTEM_PROMPT
+
+
+def _recover_truncated_json(raw: str) -> Optional[dict]:
+    """Best-effort recovery from a truncated/malformed JSON LLM response.
+
+    Local models sometimes hit num_predict mid-string. The dialogue inside
+    the 'summary' field is usually still useful even if the trailing keys
+    (e.g. 'key_points') got chopped.
+
+    Returns a dict with whatever fields could be recovered, or None if
+    nothing usable was found.
+    """
+    if not raw:
+        return None
+
+    summary_pat = re.compile(
+        r'"(?:summary|script|transcript|content|text)"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        re.DOTALL,
+    )
+    title_pat = re.compile(
+        r'"(?:title|episode_title|headline)"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        re.DOTALL,
+    )
+
+    m_summary = summary_pat.search(raw)
+    if not m_summary:
+        return None
+
+    try:
+        summary = json.loads(f'"{m_summary.group(1)}"')
+    except json.JSONDecodeError:
+        summary = m_summary.group(1).replace('\\n', '\n').replace('\\"', '"')
+
+    if not summary or not summary.strip():
+        return None
+
+    title = ""
+    m_title = title_pat.search(raw)
+    if m_title:
+        try:
+            title = json.loads(f'"{m_title.group(1)}"')
+        except json.JSONDecodeError:
+            title = m_title.group(1)
+
+    return {"summary": summary, "title": title, "key_points": []}
 
 
 def _normalize_parsed_response(parsed: dict, fallback_title: str = "Untitled Episode") -> dict:
@@ -408,13 +454,16 @@ class OllamaClient(BaseLLMClient):
         self.base_url = config.llm.ollama.base_url
         self.model = config.llm.ollama.model
         self.temperature = config.llm.ollama.temperature
+        self.num_ctx = config.llm.ollama.num_ctx
+        self.num_predict = config.llm.ollama.num_predict
+        self.timeout = config.llm.ollama.timeout
         
         self.session: Optional[aiohttp.ClientSession] = None
     
     async def __aenter__(self):
         """Async context manager entry."""
         self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=120)  # Longer timeout for local models
+            timeout=aiohttp.ClientTimeout(total=self.timeout)
         )
         return self
     
@@ -441,7 +490,9 @@ class OllamaClient(BaseLLMClient):
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": self.temperature
+                    "temperature": self.temperature,
+                    "num_ctx": self.num_ctx,
+                    "num_predict": self.num_predict,
                 },
                 "format": "json"
             }
@@ -450,9 +501,24 @@ class OllamaClient(BaseLLMClient):
                 response.raise_for_status()
                 result = await response.json()
                 
-                # Parse response
+                # Parse response — with recovery for truncated JSON.
                 content = result["response"]
-                parsed = json.loads(content)
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError as je:
+                    recovered = _recover_truncated_json(content)
+                    if recovered is None:
+                        logger.error(
+                            f"Ollama returned malformed JSON (no recovery possible): {je}"
+                            f" — first 200 chars: {content[:200]!r}"
+                        )
+                        raise
+                    logger.warning(
+                        f"Ollama JSON truncated at char {je.pos}; "
+                        f"recovered summary of {len(recovered['summary'])} chars. "
+                        f"Consider raising num_predict in config."
+                    )
+                    parsed = recovered
                 parsed = _normalize_parsed_response(parsed, fallback_title=request.title or "Untitled Episode")
 
                 processing_time = time.time() - start_time

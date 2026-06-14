@@ -29,8 +29,11 @@ ai_services:
     provider: "ollama"  # or "openai"
     ollama:
       base_url: "http://localhost:11434"
-      model: "llama2"
+      model: "llama2"   # use any 'ollama list' model, e.g. "llama3.1:8b-instruct-q4_K_M"
       timeout: 300
+      temperature: 0.7
+      num_ctx: 8192        # input context window (tokens)
+      num_predict: 4096    # max output tokens (raise if dialogue gets truncated)
     openai:
       api_key: "${OPENAI_API_KEY}"
       model: "gpt-3.5-turbo"

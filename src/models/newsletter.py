@@ -135,9 +135,17 @@ class Newsletter(Base):
         self.updated_at = now_utc()
     
     def set_extracted_content(self, extracted_content: str) -> None:
-        """Set extracted content and update word count."""
+        """Set extracted content, update word count, and recompute content_hash.
+
+        For URL-sourced newsletters, the original `content` field is empty until
+        extraction completes. We recompute `content_hash` here so the uniqueness
+        constraint protects against duplicate content (across different URLs)
+        instead of trivially colliding on the empty-string hash.
+        """
         self.extracted_content = extracted_content
         self.word_count = count_words(extracted_content)
+        if extracted_content:
+            self.content_hash = generate_content_hash(extracted_content)
         self.updated_at = now_utc()
     
     def to_dict(self) -> dict:
@@ -216,11 +224,20 @@ class Newsletter(Base):
             
         Returns:
             Newsletter instance
+
+        Note:
+            Seeds content_hash with hash-of-URL so the database uniqueness
+            constraint catches duplicate URLs at INSERT time. Once the content
+            is extracted, set_extracted_content() will overwrite content_hash
+            with the actual content hash so duplicate-content detection works
+            across different URLs too.
         """
         return cls(
             title=title or "Untitled Newsletter",
             content="",  # Will be filled by content extraction
-            url=url
+            url=url,
+            # Seed with URL hash so we don't collide on the empty-string hash.
+            content_hash=generate_content_hash(url),
         )
     
     @classmethod

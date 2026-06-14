@@ -5,7 +5,35 @@
 
 ## ✅ Completed Features
 
-### 0. TTS Engine Integration (NEW — 100% Complete)
+### 0. Phase 2: RSS Feeds & Batch Processing (NEW — 100% Complete)
+
+Auto-discovery + parallel batch processing of newsletter episodes. Resolves the "every episode is a manual `process-url` call" pain point.
+
+- **Files Added**:
+  - `src/lib/rss_parser.py` — async wrapper around `feedparser`, with `FeedEntry` dataclass and date/limit filtering
+  - `src/lib/url_enumerator.py` — HEAD-probes sequential `issue-N` URLs for newsletters without RSS (e.g. The Batch, which doesn't publish RSS). Polite rate-limiting (0.5s between requests), bounded by `max_consecutive_404` (3) and `max_probes` (50)
+  - `src/lib/episode_tracker.py` — dedup against existing DB rows by URL / content-hash / (title+date)
+  - `src/services/batch_processor.py` — orchestrator: discover via RSS or enumeration → dedupe → process with `asyncio.Semaphore`-bounded concurrency
+
+- **CLI**:
+  ```bash
+  python -m src batch-process --newsletter the-batch --latest 5
+  python -m src batch-process --newsletter the-batch --dry-run
+  python -m src batch-process --newsletter the-batch --all
+  python -m src batch-process --newsletter the-batch --latest 10 --parallel 3
+  python -m src batch-process --newsletter the-batch --start-issue 200
+  ```
+
+- **Verified end-to-end**:
+  - Discovery alone: 50 issues found in 32s
+  - Full processing of 1 latest issue: ~7 min
+  - Output: `data/audio/the-batch/the-batch-2026-06-14-issue-283.mp3`, -16.8 LUFS
+
+- **Side bugs fixed**: `Newsletter.from_url` was using SHA256 of empty string for content_hash (caused UNIQUE constraint collisions for every URL-sourced newsletter), and `set_extracted_content` never recomputed the hash. Both fixed.
+
+- **Tests**: 19 new unit tests in `tests/unit/test_batch_discovery.py`
+
+### 1. TTS Engine Integration (100% Complete)
 
 Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into the project as `src/lib/tts_engine`. Replaces the old naive Kokoro client (text in → audio out) with a production-quality Kokoro pipeline.
 
@@ -43,7 +71,7 @@ Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into th
   - ✅ Tech abbreviation expansion (GPU → G.P.U., LLM → L.L.M., AI → A.I.)
   - ✅ M4B output with chapter markers (for book-mode rendering)
 
-### 1. LLM Cost Tracking (100% Complete)
+### 2. LLM Cost Tracking (100% Complete)
 - **Files Modified**:
   - `src/services/llm_summarizer.py` - Token usage extraction and cost calculation
   - `src/lib/cost_tracker.py` - Pricing data and cost calculation utilities
@@ -61,7 +89,7 @@ Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into th
   - ✅ Cost calculation verified accurate
   - ✅ Database fields populated correctly
 
-### 2. Cost Reporting CLI (100% Complete)
+### 3. Cost Reporting CLI (100% Complete)
 - **Files Added**:
   - `src/cli/cost_commands.py` - Three cost reporting commands
   - Updated `src/cli/commands.py` - Integrated cost command group
@@ -90,7 +118,7 @@ Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into th
   - ✅ Handles empty data gracefully
   - ✅ Displays partial data correctly
 
-### 3. Database Schema Updates (100% Complete)
+### 4. Database Schema Updates (100% Complete)
 - **Migration Scripts**:
   - `scripts/migrate_add_newsletter_profiles.py` - Newsletter profile support
   - `scripts/migrate_add_cost_tracking.py` - Cost tracking fields
@@ -122,7 +150,7 @@ Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into th
   - ✅ Schema verified in database
   - ✅ Backward compatible (nullable fields)
 
-### 4. Newsletter Profiles & Smart File Organization (100% Complete)
+### 5. Newsletter Profiles & Smart File Organization (100% Complete)
 - **Files Added**:
   - `src/lib/newsletter_config.py` - Profile configuration management
   - `src/lib/storage.py` - Smart file path generation
@@ -148,7 +176,7 @@ Integrated [text2audio](https://github.com/sanzgiri/text2audio) directly into th
         style: "conversational"
   ```
 
-### 5. Documentation (100% Complete)
+### 6. Documentation (100% Complete)
 - **Files Created**:
   - `README.md` - Project overview and quick start
   - `DEVELOPMENT.md` - Phase 2 & 3 implementation plans

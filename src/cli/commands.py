@@ -274,6 +274,155 @@ def voices():
         sys.exit(1)
 
 
+@cli.command(name="batch-process")
+@click.option("--newsletter", "profile_id", required=True,
+              help="Newsletter profile ID (e.g., 'the-batch')")
+@click.option("--latest", type=int, default=None,
+              help="Process the N most-recent discovered episodes")
+@click.option("--all", "all_unprocessed", is_flag=True,
+              help="Process all discovered-and-unprocessed episodes")
+@click.option("--from", "from_date", default=None,
+              help="Earliest publication date (YYYY-MM-DD). RSS only.")
+@click.option("--to", "to_date", default=None,
+              help="Latest publication date (YYYY-MM-DD). RSS only.")
+@click.option("--start-issue", type=int, default=None,
+              help="For URL-pattern enumeration, start probing from this issue "
+                   "number + 1 (default: highest known issue in DB)")
+@click.option("--dry-run", is_flag=True,
+              help="Discover episodes but don't process them")
+@click.option("--parallel", type=int, default=1,
+              help="Max number of episodes to process concurrently (default 1; "
+                   "raise with care — each one runs LLM+TTS, can saturate CPU/GPU)")
+def batch_process(
+    profile_id: str,
+    latest: Optional[int],
+    all_unprocessed: bool,
+    from_date: Optional[str],
+    to_date: Optional[str],
+    start_issue: Optional[int],
+    dry_run: bool,
+    parallel: int,
+):
+    """Auto-discover and process new newsletter episodes in batch.
+
+    Uses RSS if the profile has one configured, otherwise falls back to
+    URL-pattern enumeration (probing sequential issue numbers).
+
+    Examples:
+
+        # Discover and process up to 5 new The Batch issues
+        python -m src batch-process --newsletter the-batch --latest 5
+
+        # See what would be processed without actually doing it
+        python -m src batch-process --newsletter the-batch --dry-run
+
+        # Process every undiscovered issue
+        python -m src batch-process --newsletter the-batch --all
+
+        # Force start enumeration from issue 280 (probes 281, 282, ...)
+        python -m src batch-process --newsletter the-batch --start-issue 280
+    """
+    from datetime import datetime
+    from src.services.batch_processor import BatchProcessor
+
+    console.print(f"[bold blue]Batch processing newsletter:[/bold blue] {profile_id}")
+
+    if not latest and not all_unprocessed and not dry_run:
+        # Sensible default: process only the latest 5
+        console.print("[yellow]No --latest, --all, or --dry-run given; defaulting to --latest 5[/yellow]")
+        latest = 5
+
+    if parallel < 1:
+        console.print("[red]--parallel must be >= 1[/red]")
+        sys.exit(1)
+
+    parsed_from = _parse_date_or_exit(from_date) if from_date else None
+    parsed_to = _parse_date_or_exit(to_date) if to_date else None
+
+    try:
+        config = get_config()
+        processor = BatchProcessor(config, max_parallel=parallel)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                "Discovering and processing episodes...", total=None
+            )
+            result = asyncio.run(processor.run(
+                profile_id=profile_id,
+                latest=latest,
+                all_unprocessed=all_unprocessed,
+                from_date=parsed_from,
+                to_date=parsed_to,
+                start_issue=start_issue,
+                dry_run=dry_run,
+            ))
+            progress.update(task, description="Done.")
+
+        _display_batch_result(result, dry_run=dry_run)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(1)
+
+
+def _parse_date_or_exit(s: str):
+    from datetime import datetime
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except ValueError:
+        console.print(f"[red]Invalid date {s!r} — expected YYYY-MM-DD[/red]")
+        sys.exit(1)
+
+
+def _display_batch_result(result, dry_run: bool = False):
+    """Pretty-print a BatchResult."""
+    from rich.table import Table
+
+    console.print()
+    console.print(f"[bold]Discovered:[/bold] {result.total_candidates} episode(s)")
+    if result.skipped:
+        console.print(f"[dim]Skipped (already processed):[/dim] {len(result.skipped)}")
+
+    if result.discovered:
+        t = Table(title="Discovered Episodes", show_lines=False)
+        t.add_column("Issue #", style="cyan")
+        t.add_column("Source", style="magenta")
+        t.add_column("Title", overflow="fold")
+        t.add_column("URL", overflow="fold")
+        for c in result.discovered[:20]:
+            t.add_row(
+                str(c.issue_number) if c.issue_number is not None else "-",
+                c.source,
+                (c.title or "")[:60],
+                c.url,
+            )
+        console.print(t)
+        if len(result.discovered) > 20:
+            console.print(f"[dim]… and {len(result.discovered) - 20} more[/dim]")
+
+    if dry_run:
+        console.print("\n[yellow]Dry-run mode: no episodes were processed.[/yellow]")
+        return
+
+    if result.succeeded:
+        console.print(f"\n[green]✓ Succeeded:[/green] {len(result.succeeded)}")
+        for nl in result.succeeded:
+            console.print(f"  ✓ {nl.id} — {nl.title or nl.url}")
+
+    if result.failed:
+        console.print(f"\n[red]✗ Failed:[/red] {len(result.failed)}")
+        for cand, err in result.failed:
+            console.print(f"  ✗ {cand.url}")
+            console.print(f"     [dim red]{err}[/dim red]")
+
+    console.print(f"\n[bold]{result.summary()}[/bold]")
+
+
 # Async helper functions
 
 async def _process_newsletter_url_async(

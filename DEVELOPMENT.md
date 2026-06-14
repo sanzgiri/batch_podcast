@@ -358,6 +358,87 @@ python -m src costs totals
 
 ## Phase 2: RSS Feeds & Batch Processing
 
+### Status: ✅ COMPLETED (June 14, 2026)
+
+### Overview
+Auto-discovery of newsletter episodes via RSS or URL-pattern enumeration, with deduplication and bounded-parallel batch processing.
+
+### Modules Shipped
+
+#### 1. `src/lib/rss_parser.py`
+Async wrapper around `feedparser`. Exposes `FeedEntry` dataclass and:
+- `RSSFeedParser.parse_feed(url) -> list[FeedEntry]` — fetches via aiohttp, parses in a thread (feedparser is sync), tolerant of malformed feeds
+- `RSSFeedParser.filter_entries(entries, from_date, to_date, limit)` — newest-first sort + date filtering + limit
+
+#### 2. `src/lib/url_enumerator.py`
+For newsletters without RSS (e.g. The Batch). Strategy:
+1. Read `url_pattern` from profile (e.g. `https://www.deeplearning.ai/the-batch/issue-*`)
+2. Start probing from `max(known_issue_number) + 1`
+3. HEAD-check each candidate URL with 0.5s polite delay
+4. Stop after `max_consecutive_404` 404s (default 3) or `max_probes` attempts (default 50)
+
+`URLEnumerator.extract_issue_number(url, pattern) -> int | None` parses the number back out of a discovered URL.
+
+#### 3. `src/lib/episode_tracker.py`
+DB-backed deduplication:
+- `get_known_urls(profile_id)` — returns set of URLs already in newsletters table
+- `get_highest_issue_number(profile_id)` — for URL-pattern enumerator starting offset
+- `is_processed(url=..., guid=..., content=..., title=..., publication_date=...)` — any-match dedup
+
+#### 4. `src/services/batch_processor.py`
+Orchestrator with `BatchCandidate` and `BatchResult` dataclasses. The `run()` method:
+1. Loads profile, validates enabled
+2. Discovers candidates: RSS first, URL-pattern enumeration as fallback
+3. Sorts newest-first (highest issue number for enumeration, newest date for RSS)
+4. Filters out already-processed URLs (`tracker.get_known_urls`)
+5. Applies `--latest N` truncation
+6. Processes with `asyncio.Semaphore(max_parallel)` for bounded concurrency
+7. Catches `UNIQUE constraint failed (content_hash)` and treats as 'skipped' rather than 'failed' (handles cases where the same content is published under multiple URLs)
+
+#### 5. CLI: `python -m src batch-process`
+```bash
+python -m src batch-process --newsletter the-batch --latest 5
+python -m src batch-process --newsletter the-batch --dry-run
+python -m src batch-process --newsletter the-batch --all
+python -m src batch-process --newsletter the-batch --latest 10 --parallel 3
+python -m src batch-process --newsletter the-batch --start-issue 200
+python -m src batch-process --newsletter the-batch --from 2026-01-01 --to 2026-06-01  # RSS only
+```
+
+### Side Bugs Fixed
+
+During end-to-end verification, two latent bugs in `Newsletter` were uncovered:
+
+1. **`from_url` seeded `content_hash` with SHA256 of empty string.** Every URL-sourced newsletter would collide on the unique constraint. Fixed: `from_url` now seeds with `SHA256(url)` so duplicate URLs are caught at INSERT time.
+
+2. **`set_extracted_content` didn't recompute `content_hash`.** Once extraction completed, the content_hash stayed as the seed value, so duplicate-content detection across different URLs never fired. Fixed: `set_extracted_content` now recomputes `content_hash = SHA256(extracted_content)`.
+
+Both changes are backward-compatible (existing rows can be re-hashed via a one-line SQL).
+
+### Tests
+
+`tests/unit/test_batch_discovery.py` — 19 new tests covering pure logic in `URLEnumerator`, `RSSFeedParser`, and `BatchProcessor._dedupe_candidates`. All passing.
+
+### Verified End-to-End
+
+```bash
+$ python -m src batch-process --newsletter the-batch --latest 1
+Discovered: 50 episode(s)
+  (issue 333, 332, 331, ..., 284 — newest first)
+✓ Succeeded: 1
+  ✓ 75059f56-... — issue 283 (oldest of the 50, after --latest 1 reverses)
+
+Total time: 7m9s (mostly LLM + TTS)
+Loudness: -16.8 LUFS (target -16, on the nose)
+Output: data/audio/the-batch/the-batch-2026-06-14-issue-283.mp3
+```
+
+_Note: "latest" here picks the most recent unprocessed issue. With 50 candidates and `--latest 1`, only the single newest gets processed._
+
+---
+
+## Phase 2 (original spec): RSS Feeds & Batch Processing
+
 ### Status: 📋 PLANNED
 
 ### Overview

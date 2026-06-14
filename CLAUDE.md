@@ -45,6 +45,8 @@ python -m uvicorn src.api.main:app --reload                          # API serve
 python -m src process-url "https://example.com/newsletter" --wait    # Process URL
 python -m src process-url "URL" --newsletter the-batch --wait        # With profile
 python -m src process-file newsletter.txt --wait                     # Process file
+python -m src batch-process --newsletter the-batch --latest 5        # Auto-discover + process N newest issues
+python -m src batch-process --newsletter the-batch --dry-run         # See what would be processed
 python -m src status <newsletter-id>                                 # Check status
 python -m src health                                                 # Health check
 python -m src voices                                                 # List TTS voices
@@ -90,6 +92,16 @@ Local Kokoro rendering pipeline vendored from text2audio (https://github.com/san
 
 Bundled presets: `podcast_two_host`, `podcast_interview`, `audiobook_warm`, `audiobook_deep`, `audiobook_british`, `story`.
 Bundled pronunciation dicts: `ai_tech` (Sutskever, Karpathy, Llama, etc.), `finance`.
+
+### Batch Processing (Phase 2)
+
+Auto-discovery via RSS (when available) or URL-pattern enumeration:
+- `src/lib/rss_parser.py` — async wrapper around feedparser
+- `src/lib/url_enumerator.py` — HEAD-probes sequential `/issue-N/` URLs (for sources without RSS, like The Batch). Bounded by max_consecutive_404 and max_probes
+- `src/lib/episode_tracker.py` — DB-backed dedup
+- `src/services/batch_processor.py` — `BatchProcessor.run(profile_id, latest=N, all_unprocessed=..., dry_run=..., parallel=N)` orchestrates discovery → dedupe → bounded-parallel processing
+
+CLI: `python -m src batch-process --newsletter the-batch [--latest N | --all | --dry-run] [--parallel K]`
 
 ### Newsletter Profiles System
 
@@ -177,5 +189,5 @@ TDD approach. Test categories use pytest markers: `@pytest.mark.unit`, `@pytest.
 
 ## Project Status
 
-**Completed**: User Story 1 (full pipeline), Newsletter Profiles (Phase 1), Cost Tracking infrastructure (70%)
-**Pending**: Cost tracking TTS integration, Phase 2 (RSS feeds & batch processing), Phase 3 (MP3 metadata & playlists)
+**Completed**: User Story 1 (full pipeline), Newsletter Profiles (Phase 1), Cost Tracking (LLM 100%, TTS 100%), TTS Engine integration (text2audio), Phase 2 (RSS feeds + URL-pattern enumeration + batch-process CLI)
+**Pending**: Phase 3 (MP3 ID3 metadata & M3U playlists)

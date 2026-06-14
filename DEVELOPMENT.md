@@ -771,9 +771,94 @@ CREATE TABLE processed_episodes (
 
 ---
 
-## Phase 3: Advanced Features
+## Phase 3: Distribution — MP3 ID3 Tags + Playlists + RSS Feeds
 
-### Status: 📋 PLANNED
+### Status: ✅ COMPLETED (June 14, 2026)
+
+### Overview
+Makes generated episodes consumable in podcast apps and music players.
+
+### Modules Shipped
+
+#### 1. `src/lib/mp3_tagger.py`
+ID3v2 tag writer using mutagen. Writes:
+- TIT2 (title)
+- TPE1 (artist)
+- TALB (album)
+- TDRC (publication date)
+- TCON (genre/category)
+- TLAN (language)
+- COMM (description / first dialogue turn)
+- WOAS (website URL)
+- WOAR (artist website URL)
+- TRCK (track number = issue number)
+- APIC (cover art — HTTP-fetched from `podcast_metadata.image_url`, cached on disk)
+
+Idempotent: re-tagging overwrites existing frames cleanly. Cover art fetch failure is non-fatal.
+
+#### 2. `src/lib/playlist_generator.py`
+M3U / M3U8 playlist generator. Uses extended M3U (`#EXTM3U` + `#EXTINF`) so apps display episode titles. Supports both absolute and relative paths (preferred: relative, for portability).
+
+#### 3. `src/lib/podcast_feed.py`
+iTunes-compatible RSS 2.0 feed generator via `feedgen`. Channel-level: title, link, description, author, language, image, iTunes category. Per-episode: title, description, GUID, pubDate, enclosure URL, itunes:duration, itunes:summary. Newest-first. Supports `base_url` parameter for HTTP-served feeds, or emits `file://` URLs for local-only use.
+
+#### 4. Pipeline Integration
+`NewsletterProcessor._process_newsletter_pipeline()` now:
+1. After TTS completes, calls `MP3Tagger.tag_episode()` to write ID3 frames
+2. After pipeline succeeds, calls `_regenerate_feeds(profile_id, profile)` to rebuild `data/playlists/{slug}.m3u8` and `data/feeds/{slug}.xml` from all DB episodes for that profile
+3. Both calls wrapped in try/except so a failure can't break the main pipeline
+
+A new helper `_format_episode_title(newsletter, profile, summary_response)` builds human-friendly titles, preferring LLM-generated titles over fallback patterns like "`<podcast> — Issue N`".
+
+### Output Layout
+
+```
+data/
+  audio/
+    the-batch/
+      the-batch-2026-06-14-issue-282.mp3       # ID3-tagged MP3
+      the-batch-2026-06-14-issue-283.mp3
+      the-batch-2026-06-14-issue-333.mp3
+    _covers/                                    # cached cover-art images
+  playlists/
+    the-batch.m3u8                              # one per newsletter
+  feeds/
+    the-batch.xml                               # iTunes-compatible RSS
+```
+
+### Verified End-to-End
+
+Processed 3 issues of The Batch (282, 283, 333) and verified:
+- All MP3s have correct ID3 frames (verified via `mutagen.id3.ID3` and `ffprobe`)
+- Playlist plays in QuickTime / VLC with episode titles shown
+- RSS feed is valid RSS 2.0 with iTunes namespace; episodes sorted newest-first
+- Description tag contains the first Host: turn as a teaser (no more "Podcast episode generated from newsletter: Untitled")
+
+### How to Actually Subscribe in Apple Podcasts / Pocket Casts
+
+The feed currently emits `file://` URLs for the enclosure (local playback only). To subscribe in a podcast app, serve `data/` over HTTP:
+
+```bash
+python -m http.server 8000 --directory data
+# Then in Apple Podcasts: File → Follow a Show by URL...
+# Enter: http://your-mac.local:8000/feeds/the-batch.xml
+```
+
+Then regenerate the feed with the right `base_url` so enclosures point to HTTP URLs (currently `_regenerate_feeds` doesn't pass `base_url` — small follow-up).
+
+### Tests
+
+`tests/unit/test_feeds_and_playlists.py` — 15 new tests:
+- `TestPlaylistGenerator`: M3U8 writing, relative paths, empty entries, unicode, M3U ASCII fallback, invalid-format error, parent-dir creation, unknown-duration handling
+- `TestPodcastFeedGenerator`: valid XML output, newest-first sort, enclosure URL with/without base_url, duration formatting (HH:MM:SS), naive datetime handling, parent-dir creation
+
+All passing. Total project tests: 97.
+
+---
+
+## Phase 3 (original spec): Advanced Features
+
+### Status: 📋 (Original spec — superseded by the shipped implementation above)
 
 ### Components to Implement
 

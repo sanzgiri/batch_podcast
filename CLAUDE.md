@@ -93,6 +93,15 @@ Local Kokoro rendering pipeline vendored from text2audio (https://github.com/san
 Bundled presets: `podcast_two_host`, `podcast_interview`, `audiobook_warm`, `audiobook_deep`, `audiobook_british`, `story`.
 Bundled pronunciation dicts: `ai_tech` (Sutskever, Karpathy, Llama, etc.), `finance`.
 
+### Phase 3 — Distribution (MP3 metadata + playlists + RSS feeds)
+
+Makes episodes consumable in podcast apps:
+- `src/lib/mp3_tagger.py` — ID3v2 tags (TIT2/TPE1/TALB/TDRC/TCON/TLAN/COMM/WOAS/WOAR/TRCK/APIC). Idempotent. Cover art fetched once and cached in `data/audio/_covers/`.
+- `src/lib/playlist_generator.py` — M3U/M3U8 playlists with #EXTM3U + #EXTINF headers, portable relative paths
+- `src/lib/podcast_feed.py` — iTunes-compatible RSS 2.0 via `feedgen`. Newest-first. Supports `base_url` for serving over HTTP, or emits `file://` URLs for local-only use.
+- Pipeline integration: `NewsletterProcessor` calls `MP3Tagger.tag_episode()` after TTS, then `_regenerate_feeds(profile_id, profile)` to refresh `data/playlists/{slug}.m3u8` and `data/feeds/{slug}.xml` from all DB episodes. Both wrapped in try/except.
+- Output layout: `data/audio/{slug}/`, `data/playlists/{slug}.m3u8`, `data/feeds/{slug}.xml`
+
 ### Batch Processing (Phase 2)
 
 Auto-discovery via RSS (when available) or URL-pattern enumeration:
@@ -189,5 +198,5 @@ TDD approach. Test categories use pytest markers: `@pytest.mark.unit`, `@pytest.
 
 ## Project Status
 
-**Completed**: User Story 1 (full pipeline), Newsletter Profiles (Phase 1), Cost Tracking (LLM 100%, TTS 100%), TTS Engine integration (text2audio), Phase 2 (RSS feeds + URL-pattern enumeration + batch-process CLI)
-**Pending**: Phase 3 (MP3 ID3 metadata & M3U playlists)
+**Completed**: User Story 1 (full pipeline), Newsletter Profiles (Phase 1), Cost Tracking (LLM 100%, TTS 100%), TTS Engine integration (text2audio), Phase 2 (RSS feeds + URL-pattern enumeration + batch-process CLI), Phase 3 (MP3 ID3 tags + M3U playlists + iTunes-compatible RSS feeds)
+**Pending**: Optional cleanup (delete broken pre-existing tests; bundle a `python -m src serve` HTTP server for serving feeds/audio to podcast apps)

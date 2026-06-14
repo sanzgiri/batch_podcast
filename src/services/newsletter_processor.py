@@ -377,12 +377,23 @@ class NewsletterProcessor:
                 mode=options.get("mode", "monologue"),
             )
             
-            # Create episode record
+            # Create episode record. Use the LLM summary as the description so
+            # podcast apps and the generated RSS feed show meaningful preview text.
+            # For dialogue scripts, the first Host: line makes a good teaser.
+            description_text = summary_response.summary.strip()
+            if description_text.startswith("Host:"):
+                # Pull the first Host: turn (without the 'Host:' label) as the teaser.
+                first_block = description_text.split("\n", 1)[0]
+                description_text = first_block.replace("Host:", "").strip()
+            # Cap to ~600 chars so feed listings stay readable.
+            if len(description_text) > 600:
+                description_text = description_text[:600].rsplit(" ", 1)[0] + "…"
+
             episode = Episode.from_newsletter_summary(
                 newsletter_id=newsletter.id,
                 title=summary_response.title,
                 summary_text=summary_response.summary,
-                description=f"Podcast episode generated from newsletter: {newsletter.title}"
+                description=description_text,
             )
             
             # Set AI provider info
@@ -476,6 +487,31 @@ class NewsletterProcessor:
             except Exception as exc:
                 logger.warning(f"Could not record TTS cost info: {exc}")
 
+            # Embed ID3 tags on the MP3 (best-effort; don't fail pipeline if this errors)
+            if newsletter_profile and target_file_path.suffix.lower() == ".mp3":
+                try:
+                    from src.lib.mp3_tagger import MP3Tagger
+                    tagger = MP3Tagger(
+                        cover_cache_dir=self.storage_manager.base_audio_dir / "_covers"
+                    )
+                    ep_title = self._format_episode_title(
+                        newsletter, newsletter_profile, summary_response
+                    )
+                    await tagger.tag_episode(
+                        target_file_path,
+                        episode_title=ep_title,
+                        podcast=newsletter_profile.podcast_metadata,
+                        episode_description=summary_response.summary[:500],
+                        publication_date=newsletter.publication_date,
+                        track_number=(
+                            int(newsletter.issue_number)
+                            if newsletter.issue_number and newsletter.issue_number.isdigit()
+                            else None
+                        ),
+                    )
+                except Exception as exc:
+                    logger.warning(f"ID3 tagging failed (non-fatal): {exc}")
+
             episode.update_status(EpisodeStatus.COMPLETED)
             await db.commit()
             await db.refresh(episode)
@@ -498,11 +534,124 @@ class NewsletterProcessor:
                 f"episode {episode_id_final}, audio duration {episode_duration}, "
                 f"total cost: ${episode_total_cost:.4f}"
             )
+
+            # Regenerate playlist + RSS feed for this profile (best-effort)
+            if newsletter_profile and newsletter.newsletter_profile_id:
+                try:
+                    await self._regenerate_feeds(newsletter.newsletter_profile_id, newsletter_profile)
+                except Exception as exc:
+                    logger.warning(f"Feed/playlist regeneration failed (non-fatal): {exc}")
             
         except Exception as e:
             logger.error(f"Pipeline step failed for newsletter {newsletter_id}: {e}")
             raise ProcessingError(f"Processing pipeline failed: {e}")
-    
+
+    @staticmethod
+    def _format_episode_title(newsletter, profile, summary_response) -> str:
+        """Build a human-friendly episode title for ID3 / feed display.
+
+        Priority: LLM-generated title from the summary (if good) >
+                  '<podcast> — Issue N' >
+                  profile name >
+                  newsletter.title >
+                  'Untitled Episode'
+        """
+        llm_title = (summary_response.title or "").strip()
+        if llm_title and llm_title.lower() not in ("untitled", "untitled episode"):
+            return llm_title
+        podcast_title = (
+            profile.podcast_metadata.title
+            if profile and profile.podcast_metadata
+            else ""
+        )
+        if newsletter.issue_number and podcast_title:
+            return f"{podcast_title} — Issue {newsletter.issue_number}"
+        if podcast_title:
+            return podcast_title
+        return (newsletter.title or "Untitled Episode").strip()
+
+    async def _regenerate_feeds(
+        self, profile_id: str, profile
+    ) -> None:
+        """Rebuild the per-profile M3U playlist and RSS feed from all DB episodes.
+
+        Best-effort: callers should wrap in try/except. This walks all
+        episodes for the profile, writes the playlist + feed atomically,
+        and returns when done.
+        """
+        from pathlib import Path
+        from sqlalchemy import select
+        from src.lib.playlist_generator import PlaylistEntry, PlaylistGenerator
+        from src.lib.podcast_feed import FeedEpisode, PodcastFeedGenerator
+        from src.models.episode import Episode
+        from src.models.newsletter import Newsletter
+
+        async with get_db_session() as db:
+            stmt = (
+                select(Newsletter, Episode)
+                .join(Episode, Newsletter.episode_id == Episode.id)
+                .where(Newsletter.newsletter_profile_id == profile_id)
+                .where(Episode.audio_file_path.is_not(None))
+                .order_by(Newsletter.publication_date.desc().nulls_last())
+            )
+            result = await db.execute(stmt)
+            rows = result.all()
+
+        if not rows:
+            return
+
+        base_audio_dir = self.storage_manager.base_audio_dir
+        # base_audio_dir is e.g. "data/audio" relative to CWD; audio_file_path
+        # in the DB is e.g. "data/audio/the-batch/x.mp3" (relative to CWD too).
+        # So we resolve from CWD, not from base_audio_dir.parent.
+        from pathlib import Path as _Path
+        cwd = _Path.cwd()
+        playlists_dir = cwd / "data" / "playlists"
+        feeds_dir = cwd / "data" / "feeds"
+
+        playlist_entries: list[PlaylistEntry] = []
+        feed_episodes: list[FeedEpisode] = []
+
+        for newsletter, episode in rows:
+            # episode.audio_file_path is stored relative to CWD (e.g. data/audio/the-batch/x.mp3)
+            stored_path = _Path(episode.audio_file_path)
+            audio_abs = stored_path if stored_path.is_absolute() else (cwd / stored_path).resolve()
+            title = self._format_episode_title(
+                newsletter, profile,
+                type("_S", (), {"title": episode.title or "", "summary": episode.summary_text or ""})(),
+            )
+            duration = int(episode.duration_seconds or 0)
+            playlist_entries.append(
+                PlaylistEntry(audio_path=audio_abs, title=title, duration_seconds=duration)
+            )
+            feed_episodes.append(
+                FeedEpisode(
+                    title=title,
+                    description=(episode.description or episode.summary_text or "")[:1000],
+                    audio_file_path=audio_abs,
+                    duration_seconds=duration,
+                    publication_date=newsletter.publication_date or episode.created_at,
+                    guid=newsletter.url or f"newsletter:{newsletter.id}",
+                    file_size_bytes=int(episode.file_size_bytes or 0),
+                    episode_url=newsletter.url,
+                )
+            )
+
+        playlist_path = playlists_dir / f"{profile_id}.m3u8"
+        PlaylistGenerator.write(
+            playlist_entries, playlist_path, relative_to=playlists_dir, format="m3u8"
+        )
+        logger.info(f"Wrote playlist: {playlist_path} ({len(playlist_entries)} entries)")
+
+        feed_path = feeds_dir / f"{profile_id}.xml"
+        feed_gen = PodcastFeedGenerator()
+        feed_gen.write_feed(
+            podcast=profile.podcast_metadata,
+            episodes=feed_episodes,
+            output_path=feed_path,
+        )
+        logger.info(f"Wrote RSS feed: {feed_path} ({len(feed_episodes)} entries)")
+
     async def get_processing_status(self, newsletter_id: str) -> Dict[str, Any]:
         """
         Get detailed processing status for a newsletter.

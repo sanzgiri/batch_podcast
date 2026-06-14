@@ -48,6 +48,8 @@ URL/Text → Content Extraction → LLM Summarization → Text-to-Speech → MP3
 - **Bundled pronunciation dicts** — `ai_tech` (Sutskever, Karpathy, Llama, etc.), `finance` (Cowen, Munger, Berkshire, etc.). Easy to extend.
 - **Tech-aware abbreviation expansion** — GPU → G.P.U., LLM → L.L.M., etc. so acronyms read correctly.
 - **Newsletter Profiles** — Per-source config with URL pattern matching, metadata extraction, smart file naming, per-newsletter voice/dialogue settings.
+- **Batch processing** — `batch-process` CLI auto-discovers new newsletter issues via RSS or URL-pattern enumeration, deduplicates against the DB, processes with bounded concurrency.
+- **Real podcast feeds** — Every episode is ID3-tagged (title, artist, album, cover art) and added to a per-newsletter M3U playlist and an iTunes-compatible RSS 2.0 feed. Subscribe in Apple Podcasts / Pocket Casts.
 - **Web UI** — Gradio-based episode browser with audio player and script viewer
 - **REST API** — FastAPI endpoints for programmatic access
 - **CLI** — Command-line tools for processing and batch automation

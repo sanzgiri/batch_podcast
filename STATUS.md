@@ -267,19 +267,22 @@ _(none — all Phase 1 features end-to-end verified June 13, 2026)_
 
 ## 🎯 Immediate Next Steps
 
-### Priority 1: ✅ Complete — begin Phase 2
-1. **Implement RSS feed parser** (`src/lib/rss_parser.py` — already planned in DEVELOPMENT.md)
-2. **Episode tracking & deduplication** (`src/lib/episode_tracker.py`)
-3. **Batch processing CLI**: `python -m src batch-process --newsletter the-batch --latest 5`
-4. **Parallel processing** via asyncio.gather + semaphore
+All planned phases (1, 2, 3) are now complete. Remaining work is cleanup / polish.
 
-### Priority 2: Phase 3 (after Phase 2)
-5. **MP3 ID3 tags** via mutagen (already in requirements.txt) — title, artist, album, cover art
-6. **M3U playlist generation** per newsletter — `playlists/{slug}.m3u`
+### Cleanup
+1. **Delete or rewrite the broken pre-existing tests** in `tests/unit/test_{content_extractor,llm_summarizer,tts_generator}.py` (12 TDD scaffolds that fail on `main`)
+2. **Add coverage gate** for the TTS engine + new lib modules (already at ~95% line coverage)
+3. **Serve feed/audio via a tiny HTTP server** so users can actually subscribe in podcast apps:
+   ```bash
+   python -m http.server 8000 --directory data
+   # then add http://your-mac.local:8000/feeds/the-batch.xml in Apple Podcasts
+   ```
+   (Optional: bundle this as `python -m src serve` with proper MIME types.)
 
-### Priority 3: Cleanup
-7. **Delete or rewrite the broken pre-existing tests** in `tests/unit/test_{content_extractor,llm_summarizer,tts_generator}.py` (12 TDD scaffolds that fail on `main`)
-8. **Add coverage gate** for the TTS engine (already at ~95% line coverage)
+### Optional enhancements
+4. **Custom pronunciation per-newsletter** — add `extra_pronunciations` to `the-batch` profile for names that come up in current AI news (Aschenbrenner, etc.)
+5. **Chapter-based dialogue** — LLM emits `## Topic Name` markers, render as chaptered M4B so listeners can skip between segments
+6. **Cover art generation** — generate a per-episode cover from the title using PIL
 
 ## 💾 Code Quality
 

@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import aiohttp
 from mutagen.id3 import (
@@ -53,12 +53,12 @@ logger = get_logger(__name__)
 class MP3Tagger:
     """Write rich ID3v2 tags onto a generated MP3 episode."""
 
-    def __init__(self, cover_cache_dir: Optional[Path] = None):
+    def __init__(self, cover_cache_dir: Path | None = None):
         # Optional on-disk cache for cover art so we don't re-fetch per episode.
         self.cover_cache_dir = cover_cache_dir
         if cover_cache_dir:
             cover_cache_dir.mkdir(parents=True, exist_ok=True)
-        self._cover_bytes_cache: dict[str, Optional[bytes]] = {}
+        self._cover_bytes_cache: dict[str, bytes | None] = {}
 
     async def tag_episode(
         self,
@@ -66,17 +66,17 @@ class MP3Tagger:
         *,
         episode_title: str,
         podcast: PodcastMetadata,
-        episode_description: Optional[str] = None,
-        publication_date: Optional[datetime] = None,
-        track_number: Optional[int] = None,
+        episode_description: str | None = None,
+        publication_date: datetime | None = None,
+        track_number: int | None = None,
     ) -> None:
         """Write ID3 tags onto `audio_file` in place."""
         if not audio_file.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_file}")
 
         # Cover art fetch is async (network); everything else is fast/sync.
-        cover_bytes: Optional[bytes] = None
-        cover_mime: Optional[str] = None
+        cover_bytes: bytes | None = None
+        cover_mime: str | None = None
         if podcast.image_url:
             cover_bytes, cover_mime = await self._get_cover_bytes(podcast.image_url)
 
@@ -99,11 +99,11 @@ class MP3Tagger:
         audio_file: Path,
         episode_title: str,
         podcast: PodcastMetadata,
-        episode_description: Optional[str],
-        publication_date: Optional[datetime],
-        track_number: Optional[int],
-        cover_bytes: Optional[bytes],
-        cover_mime: Optional[str],
+        episode_description: str | None,
+        publication_date: datetime | None,
+        track_number: int | None,
+        cover_bytes: bytes | None,
+        cover_mime: str | None,
     ) -> None:
         try:
             audio = MP3(str(audio_file), ID3=ID3)
@@ -112,19 +112,25 @@ class MP3Tagger:
             return
 
         if audio.tags is None:
-            try:
+            with suppress(Exception):
                 audio.add_tags()
-            except Exception:
-                # mutagen raises if tags already exist; safe to ignore
-                pass
 
         tags = audio.tags
         assert tags is not None
 
         # Clear existing frames we're about to set so re-tagging is clean.
         for frame_id in (
-            "TIT2", "TPE1", "TALB", "TDRC", "TCON", "TLAN",
-            "COMM", "WOAS", "WOAR", "APIC", "TRCK",
+            "TIT2",
+            "TPE1",
+            "TALB",
+            "TDRC",
+            "TCON",
+            "TLAN",
+            "COMM",
+            "WOAS",
+            "WOAR",
+            "APIC",
+            "TRCK",
         ):
             tags.delall(frame_id)
 
@@ -137,10 +143,14 @@ class MP3Tagger:
         tags.add(TLAN(encoding=3, text=podcast.language))
 
         if episode_description:
-            tags.add(COMM(
-                encoding=3, lang="eng", desc="description",
-                text=episode_description[:4000],
-            ))
+            tags.add(
+                COMM(
+                    encoding=3,
+                    lang="eng",
+                    desc="description",
+                    text=episode_description[:4000],
+                )
+            )
 
         if podcast.website_url:
             tags.add(WOAS(url=podcast.website_url))
@@ -150,19 +160,19 @@ class MP3Tagger:
             tags.add(TRCK(encoding=3, text=str(track_number)))
 
         if cover_bytes and cover_mime:
-            tags.add(APIC(
-                encoding=3,
-                mime=cover_mime,
-                type=3,  # 3 = front cover
-                desc="Cover",
-                data=cover_bytes,
-            ))
+            tags.add(
+                APIC(
+                    encoding=3,
+                    mime=cover_mime,
+                    type=3,  # 3 = front cover
+                    desc="Cover",
+                    data=cover_bytes,
+                )
+            )
 
         audio.save(v2_version=3)
 
-    async def _get_cover_bytes(
-        self, image_url: str
-    ) -> tuple[Optional[bytes], Optional[str]]:
+    async def _get_cover_bytes(self, image_url: str) -> tuple[bytes | None, str | None]:
         """Fetch (and cache) cover image bytes + mime type."""
         if image_url in self._cover_bytes_cache:
             cached = self._cover_bytes_cache[image_url]
@@ -182,18 +192,18 @@ class MP3Tagger:
         try:
             timeout = aiohttp.ClientTimeout(total=15)
             headers = {"User-Agent": "BatchPodcast/0.1"}
-            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as s:
-                async with s.get(image_url) as resp:
-                    if resp.status != 200:
-                        logger.warning(
-                            f"Cover art fetch returned HTTP {resp.status}: {image_url}"
-                        )
-                        self._cover_bytes_cache[image_url] = None
-                        return None, None
-                    data = await resp.read()
-                    mime = resp.headers.get("Content-Type", self._guess_mime(image_url))
-                    mime = mime.split(";")[0].strip()
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            async with (
+                aiohttp.ClientSession(timeout=timeout, headers=headers) as s,
+                s.get(image_url) as resp,
+            ):
+                if resp.status != 200:
+                    logger.warning(f"Cover art fetch returned HTTP {resp.status}: {image_url}")
+                    self._cover_bytes_cache[image_url] = None
+                    return None, None
+                data = await resp.read()
+                mime = resp.headers.get("Content-Type", self._guess_mime(image_url))
+                mime = mime.split(";")[0].strip()
+        except (TimeoutError, aiohttp.ClientError) as e:
             logger.warning(f"Cover art fetch failed for {image_url}: {e}")
             self._cover_bytes_cache[image_url] = None
             return None, None

@@ -5,16 +5,13 @@ Provides commands to view and analyze processing costs.
 """
 
 import asyncio
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 import click
 from rich.console import Console
 from rich.table import Table
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 
-from src.lib.config import get_config
 from src.lib.database import get_db_session
 from src.models import Episode, Newsletter
 
@@ -51,10 +48,7 @@ def totals():
 
 
 async def _show_cost_summary(
-    newsletter_profile_id: Optional[str],
-    from_date: Optional[str],
-    to_date: Optional[str],
-    limit: int
+    newsletter_profile_id: str | None, from_date: str | None, to_date: str | None, limit: int
 ):
     """Show cost summary table."""
     async with get_db_session() as db:
@@ -111,7 +105,7 @@ async def _show_cost_summary(
                 f"${llm_cost:.4f}",
                 f"{ep.tts_characters or 0:,}",
                 f"${tts_cost:.4f}",
-                f"${ep_total_cost:.4f}"
+                f"${ep_total_cost:.4f}",
             )
 
         # Add totals row
@@ -123,7 +117,7 @@ async def _show_cost_summary(
             f"[bold]${total_llm_cost:.4f}[/bold]",
             "",
             f"[bold]${total_tts_cost:.4f}[/bold]",
-            f"[bold]${total_cost:.4f}[/bold]"
+            f"[bold]${total_cost:.4f}[/bold]",
         )
 
         console.print(table)
@@ -166,7 +160,10 @@ async def _show_episode_costs(episode_id: str):
         table.add_row("", "")
 
         # Total
-        table.add_row("[bold green]Total Cost[/bold green]", f"[bold green]${episode.total_cost or 0.0:.4f}[/bold green]")
+        table.add_row(
+            "[bold green]Total Cost[/bold green]",
+            f"[bold green]${episode.total_cost or 0.0:.4f}[/bold green]",
+        )
 
         console.print(table)
 
@@ -182,7 +179,7 @@ async def _show_total_costs():
                 func.sum(Episode.tts_cost).label("total_tts"),
                 func.sum(Episode.total_cost).label("total"),
                 func.sum(Episode.llm_total_tokens).label("total_tokens"),
-                func.sum(Episode.tts_characters).label("total_chars")
+                func.sum(Episode.tts_characters).label("total_chars"),
             ).where(Episode.status == "completed")
         )
 
@@ -201,7 +198,9 @@ async def _show_total_costs():
         table.add_row("Total TTS Characters", f"{int(row.total_chars or 0):,}")
         table.add_row("Total TTS Cost", f"[green]${row.total_tts or 0.0:.4f}[/green]")
         table.add_row("", "")
-        table.add_row("[bold]Total Cost[/bold]", f"[bold green]${row.total or 0.0:.4f}[/bold green]")
+        table.add_row(
+            "[bold]Total Cost[/bold]", f"[bold green]${row.total or 0.0:.4f}[/bold green]"
+        )
 
         # Calculate averages
         if row.count and row.count > 0:
@@ -216,7 +215,7 @@ async def _show_total_costs():
             select(
                 Newsletter.newsletter_profile_id,
                 func.count(Episode.id).label("count"),
-                func.sum(Episode.total_cost).label("total")
+                func.sum(Episode.total_cost).label("total"),
             )
             .join(Episode, Newsletter.id == Episode.newsletter_id)
             .where(Episode.status == "completed")
@@ -231,10 +230,6 @@ async def _show_total_costs():
 
         for row in newsletter_result:
             profile_id = row.newsletter_profile_id or "uncategorized"
-            newsletter_table.add_row(
-                profile_id,
-                f"{row.count:,}",
-                f"${row.total or 0.0:.4f}"
-            )
+            newsletter_table.add_row(profile_id, f"{row.count:,}", f"${row.total or 0.0:.4f}")
 
         console.print(newsletter_table)

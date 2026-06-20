@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Optional
 
 import aiohttp
 
@@ -60,7 +59,7 @@ class URLEnumerator:
         return self.url_pattern.replace("*", str(issue_number))
 
     @staticmethod
-    def extract_issue_number(url: str, pattern: str) -> Optional[int]:
+    def extract_issue_number(url: str, pattern: str) -> int | None:
         """Extract the integer that '*' represented in a generated URL.
 
         >>> URLEnumerator.extract_issue_number(
@@ -81,7 +80,7 @@ class URLEnumerator:
     async def discover_new(
         self,
         start_from: int,
-        known_urls: Optional[set[str]] = None,
+        known_urls: set[str] | None = None,
     ) -> list[tuple[int, str]]:
         """Probe issue numbers from `start_from` upward, return new (n, url) pairs.
 
@@ -141,6 +140,6 @@ class URLEnumerator:
                     async with session.get(url, allow_redirects=True) as gresp:
                         return gresp.status == 200
                 return False
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             logger.debug(f"URL probe failed for {url}: {e}")
             return False

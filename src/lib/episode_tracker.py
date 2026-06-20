@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import or_, select
 
@@ -22,7 +21,7 @@ logger = get_logger(__name__)
 class EpisodeTracker:
     """Track which newsletter URLs / contents / GUIDs are already processed."""
 
-    async def get_known_urls(self, newsletter_profile_id: Optional[str] = None) -> set[str]:
+    async def get_known_urls(self, newsletter_profile_id: str | None = None) -> set[str]:
         """Return the set of URLs already stored in the database.
 
         If newsletter_profile_id is given, restrict to that profile.
@@ -53,11 +52,11 @@ class EpisodeTracker:
 
     async def is_processed(
         self,
-        url: Optional[str] = None,
-        guid: Optional[str] = None,
-        content: Optional[str] = None,
-        title: Optional[str] = None,
-        publication_date: Optional[datetime] = None,
+        url: str | None = None,
+        guid: str | None = None,
+        content: str | None = None,
+        title: str | None = None,
+        publication_date: datetime | None = None,
     ) -> bool:
         """Return True iff *any* of the given identifiers matches an existing newsletter.
 
@@ -72,10 +71,9 @@ class EpisodeTracker:
 
             if url:
                 clauses.append(Newsletter.url == url)
-            if guid and guid != url:
+            if guid and guid != url and guid.startswith("http"):
                 # If GUID is a URL, treat it as one. Otherwise no field stores GUIDs today.
-                if guid.startswith("http"):
-                    clauses.append(Newsletter.url == guid)
+                clauses.append(Newsletter.url == guid)
 
             if content:
                 content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -83,8 +81,7 @@ class EpisodeTracker:
 
             if title and publication_date:
                 clauses.append(
-                    (Newsletter.title == title)
-                    & (Newsletter.publication_date == publication_date)
+                    (Newsletter.title == title) & (Newsletter.publication_date == publication_date)
                 )
 
             if not clauses:

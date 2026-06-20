@@ -5,20 +5,18 @@ This module defines the Episode SQLAlchemy model for storing
 generated podcast episodes and their metadata.
 """
 
-from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
-from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, Float
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 
 from src.lib.database import Base
-from src.lib.utils import generate_uuid, now_utc, format_duration, format_file_size
+from src.lib.utils import format_duration, format_file_size, generate_uuid, now_utc
 
 
-class EpisodeStatus(str, Enum):
+class EpisodeStatus(StrEnum):
     """Episode processing status enumeration."""
+
     PENDING = "pending"
     GENERATING = "generating"
     COMPLETED = "completed"
@@ -29,36 +27,36 @@ class EpisodeStatus(str, Enum):
 class Episode(Base):
     """
     Episode model for storing generated podcast episodes.
-    
+
     This model represents a podcast episode generated from a newsletter,
     including the audio file, metadata, and publication information.
     """
-    
+
     __tablename__ = "episodes"
-    
+
     # Primary key
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    
+
     # Foreign key to newsletter
     newsletter_id = Column(String(36), ForeignKey("newsletters.id"), nullable=False, index=True)
-    
+
     # Episode content
     title = Column(String(500), nullable=False, index=True)
     description = Column(Text, nullable=False)
     summary_text = Column(Text, nullable=False)
-    
+
     # Audio file information
     audio_file_path = Column(String(1024), nullable=True)
     audio_url = Column(String(2048), nullable=True)
     duration_seconds = Column(Integer, nullable=True)
     file_size_bytes = Column(Integer, nullable=True)
-    
+
     # Publication information
     publication_date = Column(DateTime(timezone=True), nullable=False, default=now_utc)
-    
+
     # Processing status
     status = Column(String(20), nullable=False, default=EpisodeStatus.PENDING.value, index=True)
-    
+
     # Processing metadata
     llm_provider = Column(String(50), nullable=True)
     llm_model = Column(String(100), nullable=True)
@@ -76,73 +74,68 @@ class Episode(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=now_utc)
-    updated_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=now_utc,
-        onupdate=now_utc
-    )
-    
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
     # Relationship to newsletter
     newsletter = relationship("Newsletter", backref="episodes")
-    
+
     def __init__(self, **kwargs):
         """Initialize Episode instance."""
         super().__init__(**kwargs)
-    
+
     @property
     def status_enum(self) -> EpisodeStatus:
         """Get status as enum."""
         return EpisodeStatus(self.status)
-    
+
     @property
     def is_completed(self) -> bool:
         """Check if episode generation is completed."""
         return self.status == EpisodeStatus.COMPLETED.value
-    
+
     @property
     def is_published(self) -> bool:
         """Check if episode is published."""
         return self.status == EpisodeStatus.PUBLISHED.value
-    
+
     @property
     def has_audio(self) -> bool:
         """Check if episode has audio file."""
         return self.audio_file_path is not None
-    
+
     @property
-    def formatted_duration(self) -> Optional[str]:
+    def formatted_duration(self) -> str | None:
         """Get formatted duration string (MM:SS or HH:MM:SS)."""
         if self.duration_seconds is None:
             return None
         return format_duration(self.duration_seconds)
-    
+
     @property
-    def formatted_file_size(self) -> Optional[str]:
+    def formatted_file_size(self) -> str | None:
         """Get formatted file size string."""
         if self.file_size_bytes is None:
             return None
         return format_file_size(self.file_size_bytes)
-    
+
     @property
     def is_ready_for_publication(self) -> bool:
         """Check if episode is ready for publication."""
         return (
-            self.status == EpisodeStatus.COMPLETED.value and
-            self.has_audio and
-            self.audio_url is not None
+            self.status == EpisodeStatus.COMPLETED.value
+            and self.has_audio
+            and self.audio_url is not None
         )
-    
+
     def update_status(self, status: EpisodeStatus) -> None:
         """Update episode processing status."""
         self.status = status.value
         self.updated_at = now_utc()
-    
+
     def set_audio_info(
         self,
         audio_file_path: str,
-        duration_seconds: Optional[int] = None,
-        file_size_bytes: Optional[int] = None
+        duration_seconds: int | None = None,
+        file_size_bytes: int | None = None,
     ) -> None:
         """Set audio file information."""
         self.audio_file_path = audio_file_path
@@ -151,18 +144,18 @@ class Episode(Base):
         if file_size_bytes is not None:
             self.file_size_bytes = file_size_bytes
         self.updated_at = now_utc()
-    
+
     def set_audio_url(self, audio_url: str) -> None:
         """Set public audio URL."""
         self.audio_url = audio_url
         self.updated_at = now_utc()
-    
+
     def set_ai_providers(
         self,
-        llm_provider: Optional[str] = None,
-        llm_model: Optional[str] = None,
-        tts_provider: Optional[str] = None,
-        tts_voice: Optional[str] = None
+        llm_provider: str | None = None,
+        llm_model: str | None = None,
+        tts_provider: str | None = None,
+        tts_voice: str | None = None,
     ) -> None:
         """Set AI provider information."""
         if llm_provider is not None:
@@ -177,11 +170,11 @@ class Episode(Base):
 
     def set_cost_info(
         self,
-        llm_input_tokens: Optional[int] = None,
-        llm_output_tokens: Optional[int] = None,
-        llm_cost: Optional[float] = None,
-        tts_characters: Optional[int] = None,
-        tts_cost: Optional[float] = None
+        llm_input_tokens: int | None = None,
+        llm_output_tokens: int | None = None,
+        llm_cost: float | None = None,
+        tts_characters: int | None = None,
+        tts_cost: float | None = None,
     ) -> None:
         """Set cost tracking information."""
         if llm_input_tokens is not None:
@@ -205,7 +198,7 @@ class Episode(Base):
         """Mark episode as published."""
         self.status = EpisodeStatus.PUBLISHED.value
         self.updated_at = now_utc()
-    
+
     def to_dict(self) -> dict:
         """Convert episode to dictionary for API responses."""
         return {
@@ -234,9 +227,9 @@ class Episode(Base):
             "tts_cost": self.tts_cost,
             "total_cost": self.total_cost,
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
         }
-    
+
     def to_rss_item_dict(self) -> dict:
         """Convert episode to dictionary for RSS feed items."""
         return {
@@ -247,47 +240,43 @@ class Episode(Base):
             "duration": self.formatted_duration,
             "file_size": self.file_size_bytes,
             "audio_url": self.audio_url,
-            "episode_url": f"/episodes/{self.id}"
+            "episode_url": f"/episodes/{self.id}",
         }
-    
+
     @classmethod
     def from_newsletter_summary(
-        cls,
-        newsletter_id: str,
-        title: str,
-        summary_text: str,
-        description: Optional[str] = None
+        cls, newsletter_id: str, title: str, summary_text: str, description: str | None = None
     ) -> "Episode":
         """
         Create Episode instance from newsletter summary.
-        
+
         Args:
             newsletter_id: ID of the source newsletter
             title: Episode title
             summary_text: LLM-generated summary text
             description: Episode description (defaults to summary preview)
-            
+
         Returns:
             Episode instance
         """
         if description is None:
             # Use first 200 characters of summary as description
             description = summary_text[:200] + "..." if len(summary_text) > 200 else summary_text
-        
+
         return cls(
             newsletter_id=newsletter_id,
             title=title,
             description=description,
-            summary_text=summary_text
+            summary_text=summary_text,
         )
-    
+
     def __repr__(self) -> str:
         """String representation of Episode."""
         return (
             f"<Episode(id='{self.id}', title='{self.title[:50]}...', "
             f"status='{self.status}', duration={self.formatted_duration})>"
         )
-    
+
     def __str__(self) -> str:
         """Human-readable string representation."""
         return f"Episode: {self.title} ({self.status})"

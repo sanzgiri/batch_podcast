@@ -7,11 +7,9 @@ at structural boundaries (paragraphs, headings, quotes, turns).
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 from src.lib.tts_engine.blocks import Block, Chapter
 from src.lib.tts_engine.text_processing import clean_inline
-
 
 # ---------------------------------------------------------------------------
 # Markdown -> Chapters (book mode)
@@ -27,7 +25,7 @@ def parse_markdown_book(md: str) -> list[Chapter]:
 
     lines = md.split("\n")
     chapters: list[Chapter] = []
-    current: Optional[Chapter] = None
+    current: Chapter | None = None
     para_buf: list[str] = []
     quote_buf: list[str] = []
     list_buf: list[str] = []
@@ -171,7 +169,7 @@ def parse_dialogue(text: str) -> tuple[list[Chapter], dict[str, str]]:
     blocks: list[Block] = []
     speaker_keys: dict[str, str] = {}
     speaker_order: list[str] = []
-    current_speaker: Optional[str] = None
+    current_speaker: str | None = None
     buf: list[str] = []
 
     def flush() -> None:
@@ -179,9 +177,7 @@ def parse_dialogue(text: str) -> tuple[list[Chapter], dict[str, str]]:
         if current_speaker and buf:
             t = clean_inline(" ".join(buf).strip())
             if t:
-                blocks.append(
-                    Block("turn", t, speaker=speaker_keys[current_speaker])
-                )
+                blocks.append(Block("turn", t, speaker=speaker_keys[current_speaker]))
                 blocks.append(Block("silence", seconds=0.45))
         buf = []
 

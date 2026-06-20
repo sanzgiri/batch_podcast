@@ -16,9 +16,8 @@ We emit:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 from urllib.parse import quote
 
 from feedgen.feed import FeedGenerator
@@ -32,12 +31,12 @@ class FeedEpisode:
 
     title: str
     description: str
-    audio_file_path: Path     # local path to the MP3
+    audio_file_path: Path  # local path to the MP3
     duration_seconds: int
     publication_date: datetime
-    guid: str                  # unique stable id (e.g. newsletter URL)
+    guid: str  # unique stable id (e.g. newsletter URL)
     file_size_bytes: int = 0
-    episode_url: Optional[str] = None  # original article URL
+    episode_url: str | None = None  # original article URL
 
 
 class PodcastFeedGenerator:
@@ -49,8 +48,8 @@ class PodcastFeedGenerator:
         episodes: list[FeedEpisode],
         output_path: Path,
         *,
-        base_url: Optional[str] = None,
-        feed_url: Optional[str] = None,
+        base_url: str | None = None,
+        feed_url: str | None = None,
     ) -> int:
         """Write an RSS XML feed to `output_path`.
 
@@ -96,9 +95,7 @@ class PodcastFeedGenerator:
 
         # --- Per-episode ---
         # Sort newest-first; that's the convention podcast apps expect.
-        episodes_sorted = sorted(
-            episodes, key=lambda e: e.publication_date, reverse=True
-        )
+        episodes_sorted = sorted(episodes, key=lambda e: e.publication_date, reverse=True)
 
         for ep in episodes_sorted:
             fe = fg.add_entry(order="append")
@@ -111,9 +108,7 @@ class PodcastFeedGenerator:
                 fe.link(href=ep.episode_url)
 
             # Build enclosure URL (the link to the actual MP3)
-            enclosure_url = self._build_enclosure_url(
-                ep.audio_file_path, output_path, base_url
-            )
+            enclosure_url = self._build_enclosure_url(ep.audio_file_path, output_path, base_url)
             if enclosure_url:
                 fe.enclosure(
                     url=enclosure_url,
@@ -135,7 +130,7 @@ class PodcastFeedGenerator:
     @staticmethod
     def _tzaware(dt: datetime) -> datetime:
         if dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
+            return dt.replace(tzinfo=UTC)
         return dt
 
     @staticmethod
@@ -148,12 +143,11 @@ class PodcastFeedGenerator:
         return f"{hh:02d}:{mm:02d}:{ss:02d}"
 
     @staticmethod
-    def _build_enclosure_url(
-        audio_path: Path, feed_path: Path, base_url: Optional[str]
-    ) -> Optional[str]:
+    def _build_enclosure_url(audio_path: Path, feed_path: Path, base_url: str | None) -> str | None:
         if base_url:
             # Compute the audio file's path relative to the feed's parent dir.
             import os
+
             rel = os.path.relpath(str(audio_path), start=str(feed_path.parent))
             rel = rel.replace("\\", "/")
             # URL-encode each path segment (preserve slashes)

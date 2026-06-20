@@ -5,9 +5,8 @@ Handles newsletter-specific configuration and profiles.
 """
 
 import re
-from pathlib import Path
-from typing import Optional, Dict, List
 from datetime import datetime
+from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -15,9 +14,10 @@ from pydantic import BaseModel, Field, field_validator
 
 class ProcessingConfig(BaseModel):
     """Processing settings for newsletter content."""
+
     length: str = Field(default="medium", description="Target podcast length")
     style: str = Field(default="conversational", description="Podcast style")
-    focus_areas: List[str] = Field(default_factory=list, description="Topics to emphasize")
+    focus_areas: list[str] = Field(default_factory=list, description="Topics to emphasize")
     mode: str = Field(
         default="monologue",
         description="Script mode: 'monologue' (single narrator) or 'dialogue' (two hosts)",
@@ -56,27 +56,28 @@ class TTSProfileConfig(BaseModel):
     Settings here are passed through to the Kokoro pipeline
     (src.services.tts_generator.TTSGenerator.generate_speech).
     """
-    preset: Optional[str] = Field(
+
+    preset: str | None = Field(
         default=None,
         description="Named preset from src/lib/tts_engine/data/presets/*.json",
     )
-    voice: Optional[str] = Field(
+    voice: str | None = Field(
         default=None,
         description="Primary voice spec, e.g. 'af_heart' or 'af_heart:0.7,af_nicole:0.3'",
     )
-    quote_voice: Optional[str] = Field(
+    quote_voice: str | None = Field(
         default=None, description="Secondary voice for blockquotes ('none' to disable)"
     )
-    voice_a: Optional[str] = Field(default=None, description="Dialogue mode: first speaker voice")
-    voice_b: Optional[str] = Field(default=None, description="Dialogue mode: second speaker voice")
+    voice_a: str | None = Field(default=None, description="Dialogue mode: first speaker voice")
+    voice_b: str | None = Field(default=None, description="Dialogue mode: second speaker voice")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     quote_speed: float = Field(default=0.85, ge=0.5, le=2.0)
     dialogue_speed: float = Field(default=0.95, ge=0.5, le=2.0)
-    pronunciations: Optional[str] = Field(
+    pronunciations: str | None = Field(
         default=None,
         description="Bundled dict name (e.g. 'ai_tech') or path to a JSON file",
     )
-    extra_pronunciations: Dict[str, str] = Field(
+    extra_pronunciations: dict[str, str] = Field(
         default_factory=dict,
         description="Inline pronunciation overrides merged on top of the dict",
     )
@@ -88,28 +89,30 @@ class TTSProfileConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     """Output settings for generated podcasts."""
+
     folder: str = Field(..., description="Subfolder for audio files")
     naming_template: str = Field(
-        default="{slug}-{date}",
-        description="Template for filename generation"
+        default="{slug}-{date}", description="Template for filename generation"
     )
 
 
 class PodcastMetadata(BaseModel):
     """Podcast metadata for RSS feeds and ID3 tags."""
+
     title: str = Field(..., description="Podcast title")
     description: str = Field(..., description="Podcast description")
     author: str = Field(..., description="Podcast author")
-    email: Optional[str] = Field(default=None, description="Contact email")
+    email: str | None = Field(default=None, description="Contact email")
     category: str = Field(default="Technology", description="Podcast category")
     language: str = Field(default="en-us", description="Language code")
-    image_url: Optional[str] = Field(default=None, description="Cover art URL")
-    website_url: Optional[str] = Field(default=None, description="Website URL")
+    image_url: str | None = Field(default=None, description="Cover art URL")
+    website_url: str | None = Field(default=None, description="Website URL")
 
 
 class ExtractionPattern(BaseModel):
     """Pattern for extracting metadata from URLs or content."""
-    pattern: Optional[str] = Field(default=None, description="Regex pattern")
+
+    pattern: str | None = Field(default=None, description="Regex pattern")
     source: str = Field(default="url", description="Source: url or content")
 
     @field_validator("source")
@@ -124,22 +127,24 @@ class ExtractionPattern(BaseModel):
 
 class ExtractionConfig(BaseModel):
     """Configuration for metadata extraction."""
-    issue_number: Optional[ExtractionPattern] = None
-    date: Optional[ExtractionPattern] = None
-    title: Optional[ExtractionPattern] = None
+
+    issue_number: ExtractionPattern | None = None
+    date: ExtractionPattern | None = None
+    title: ExtractionPattern | None = None
 
 
 class NewsletterProfile(BaseModel):
     """Complete newsletter profile configuration."""
+
     name: str = Field(..., description="Newsletter display name")
     enabled: bool = Field(default=True, description="Enable processing")
-    rss_feed: Optional[str] = Field(default=None, description="RSS feed URL")
-    url_pattern: Optional[str] = Field(default=None, description="URL pattern for matching")
+    rss_feed: str | None = Field(default=None, description="RSS feed URL")
+    url_pattern: str | None = Field(default=None, description="URL pattern for matching")
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     tts: TTSProfileConfig = Field(default_factory=TTSProfileConfig)
     output: OutputConfig
     podcast_metadata: PodcastMetadata
-    extraction: Optional[ExtractionConfig] = Field(default=None)
+    extraction: ExtractionConfig | None = Field(default=None)
 
     def matches_url(self, url: str) -> bool:
         """Check if a URL matches this newsletter's pattern."""
@@ -152,7 +157,7 @@ class NewsletterProfile(BaseModel):
 
         return bool(re.match(pattern, url))
 
-    def extract_metadata(self, url: str, content: Optional[str] = None) -> Dict[str, Optional[str]]:
+    def extract_metadata(self, url: str, content: str | None = None) -> dict[str, str | None]:
         """Extract metadata from URL and/or content."""
         metadata = {
             "issue_number": None,
@@ -192,10 +197,10 @@ class NewsletterProfile(BaseModel):
     def generate_filename(
         self,
         slug: str,
-        date: Optional[str] = None,
-        issue: Optional[str] = None,
-        title: Optional[str] = None,
-        newsletter_id: Optional[str] = None,
+        date: str | None = None,
+        issue: str | None = None,
+        title: str | None = None,
+        newsletter_id: str | None = None,
     ) -> str:
         """Generate filename from template."""
         # Prepare variables
@@ -222,13 +227,14 @@ class NewsletterProfile(BaseModel):
         """Sanitize text for use in filename."""
         # Remove/replace invalid characters
         text = re.sub(r'[<>:"/\\|?*]', "", text)
-        text = re.sub(r'\s+', "-", text)
+        text = re.sub(r"\s+", "-", text)
         return text.lower()
 
 
 class NewsletterConfig(BaseModel):
     """Root configuration for all newsletters."""
-    newsletters: Dict[str, NewsletterProfile]
+
+    newsletters: dict[str, NewsletterProfile]
 
     @classmethod
     def load_from_file(cls, config_path: Path) -> "NewsletterConfig":
@@ -237,20 +243,20 @@ class NewsletterConfig(BaseModel):
             # Return empty config if file doesn't exist
             return cls(newsletters={})
 
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             data = yaml.safe_load(f)
 
         return cls(**data)
 
-    def get_profile(self, profile_id: str) -> Optional[NewsletterProfile]:
+    def get_profile(self, profile_id: str) -> NewsletterProfile | None:
         """Get newsletter profile by ID."""
         return self.newsletters.get(profile_id)
 
-    def get_enabled_profiles(self) -> Dict[str, NewsletterProfile]:
+    def get_enabled_profiles(self) -> dict[str, NewsletterProfile]:
         """Get all enabled newsletter profiles."""
         return {k: v for k, v in self.newsletters.items() if v.enabled}
 
-    def find_profile_by_url(self, url: str) -> Optional[tuple[str, NewsletterProfile]]:
+    def find_profile_by_url(self, url: str) -> tuple[str, NewsletterProfile] | None:
         """Find newsletter profile that matches a URL."""
         for profile_id, profile in self.newsletters.items():
             if profile.enabled and profile.matches_url(url):
@@ -259,10 +265,10 @@ class NewsletterConfig(BaseModel):
 
 
 # Global newsletter config instance
-_newsletter_config: Optional[NewsletterConfig] = None
+_newsletter_config: NewsletterConfig | None = None
 
 
-def get_newsletter_config(config_path: Optional[Path] = None) -> NewsletterConfig:
+def get_newsletter_config(config_path: Path | None = None) -> NewsletterConfig:
     """Get or load newsletter configuration."""
     global _newsletter_config
 
@@ -276,7 +282,7 @@ def get_newsletter_config(config_path: Optional[Path] = None) -> NewsletterConfi
     return _newsletter_config
 
 
-def reload_newsletter_config(config_path: Optional[Path] = None) -> NewsletterConfig:
+def reload_newsletter_config(config_path: Path | None = None) -> NewsletterConfig:
     """Reload newsletter configuration from file."""
     global _newsletter_config
     _newsletter_config = None

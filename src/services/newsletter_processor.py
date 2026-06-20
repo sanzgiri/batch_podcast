@@ -6,21 +6,20 @@ coordinating content extraction, LLM summarization, TTS generation, and storage.
 """
 
 import asyncio
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.lib.config import Config
 from src.lib.database import get_db_session
-from src.lib.logging import get_logger
 from src.lib.exceptions import ProcessingError, ValidationError
-from src.lib.metrics import record_processing_time, increment_counter
+from src.lib.logging import get_logger
+from src.lib.metrics import increment_counter, record_processing_time
+from src.lib.newsletter_config import NewsletterProfile, get_newsletter_config
 from src.lib.storage import StorageManager
-from src.lib.newsletter_config import get_newsletter_config, NewsletterProfile
-from src.models import Newsletter, Episode, NewsletterStatus, EpisodeStatus
+from src.models import Episode, EpisodeStatus, Newsletter, NewsletterStatus
 from src.services import ContentExtractor, LLMSummarizer, TTSGenerator
-
 
 logger = get_logger(__name__)
 
@@ -28,11 +27,11 @@ logger = get_logger(__name__)
 class NewsletterProcessor:
     """
     Main orchestration service for newsletter-to-podcast conversion.
-    
+
     Handles the complete pipeline from content extraction through audio generation,
     with proper error handling, status tracking, and recovery mechanisms.
     """
-    
+
     def __init__(self, config: Config):
         """Initialize Newsletter Processor with configuration."""
         self.config = config
@@ -42,31 +41,31 @@ class NewsletterProcessor:
         self.storage_manager = StorageManager(config)
 
         # Service instances will be created as context managers
-        self.content_extractor: Optional[ContentExtractor] = None
-        self.llm_summarizer: Optional[LLMSummarizer] = None
-        self.tts_generator: Optional[TTSGenerator] = None
-    
+        self.content_extractor: ContentExtractor | None = None
+        self.llm_summarizer: LLMSummarizer | None = None
+        self.tts_generator: TTSGenerator | None = None
+
     async def __aenter__(self):
         """Async context manager entry - initialize all services."""
         try:
             # Initialize services as context managers
             self.content_extractor = ContentExtractor(self.config)
             await self.content_extractor.__aenter__()
-            
+
             self.llm_summarizer = LLMSummarizer(self.config)
             await self.llm_summarizer.__aenter__()
-            
+
             self.tts_generator = TTSGenerator(self.config)
             await self.tts_generator.__aenter__()
-            
+
             logger.info("Newsletter processor initialized with all services")
             return self
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize newsletter processor: {e}")
             await self.__aexit__(type(e), e, e.__traceback__)
-            raise ProcessingError(f"Service initialization failed: {e}")
-    
+            raise ProcessingError(f"Service initialization failed: {e}") from e
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit - cleanup all services."""
         try:
@@ -78,13 +77,13 @@ class NewsletterProcessor:
                 await self.content_extractor.__aexit__(exc_type, exc_val, exc_tb)
         except Exception as e:
             logger.error(f"Error during newsletter processor cleanup: {e}")
-    
+
     async def process_newsletter_from_url(
         self,
         url: str,
-        user_id: Optional[str] = None,
-        newsletter_profile_id: Optional[str] = None,
-        processing_options: Optional[Dict[str, Any]] = None
+        user_id: str | None = None,
+        newsletter_profile_id: str | None = None,
+        processing_options: dict[str, Any] | None = None,
     ) -> Newsletter:
         """
         Process newsletter from URL through complete pipeline.
@@ -139,106 +138,103 @@ class NewsletterProcessor:
                 await self._process_newsletter_pipeline(
                     newsletter, db, newsletter_profile, processing_options
                 )
-                
+
                 processing_time = asyncio.get_event_loop().time() - start_time
                 record_processing_time("newsletter_processing", processing_time)
                 increment_counter("newsletters_processed_total")
-                
+
                 logger.info(
                     f"Newsletter processing completed: {newsletter_id}, "
                     f"status: {newsletter.status}, "
                     f"processed in {processing_time:.2f}s"
                 )
-                
+
                 return newsletter
-                
+
             except Exception as e:
                 # Mark as failed and re-raise
                 newsletter.update_status(NewsletterStatus.FAILED)
                 newsletter.set_error(str(e))
                 await db.commit()
-                
+
                 increment_counter("newsletters_failed_total")
                 logger.error(f"Newsletter processing failed: {newsletter_id}, error: {e}")
                 raise
-    
+
     async def process_newsletter_from_text(
         self,
         content: str,
-        title: Optional[str] = None,
+        title: str | None = None,
         content_type: str = "text",
-        user_id: Optional[str] = None,
-        processing_options: Optional[Dict[str, Any]] = None
+        user_id: str | None = None,
+        processing_options: dict[str, Any] | None = None,
     ) -> Newsletter:
         """
         Process newsletter from raw text/HTML/markdown content.
-        
+
         Args:
             content: Newsletter content
             title: Newsletter title
             content_type: Content type (text, html, markdown)
             user_id: Optional user ID for tracking
             processing_options: Optional processing parameters
-            
+
         Returns:
             Newsletter model with processing status
-            
+
         Raises:
             ProcessingError: If processing fails
             ValidationError: If content is invalid
         """
         start_time = asyncio.get_event_loop().time()
-        
+
         async with get_db_session() as db:
             # Create newsletter record
             newsletter = Newsletter.from_text(
-                content=content,
-                title=title,
-                content_type=content_type,
-                user_id=user_id
+                content=content, title=title, content_type=content_type, user_id=user_id
             )
             db.add(newsletter)
             await db.commit()
             await db.refresh(newsletter)
-            
+
             logger.info(f"Starting newsletter processing: {newsletter.id} from text content")
-            
+
             try:
                 # Process through pipeline (no profile for text-based newsletters)
                 await self._process_newsletter_pipeline(newsletter, db, None, processing_options)
-                
+
                 processing_time = asyncio.get_event_loop().time() - start_time
                 record_processing_time("newsletter_processing", processing_time)
                 increment_counter("newsletters_processed_total")
-                
+
                 logger.info(
                     f"Newsletter processing completed: {newsletter.id}, "
                     f"status: {newsletter.status}, "
                     f"processed in {processing_time:.2f}s"
                 )
-                
+
                 return newsletter
-                
+
             except Exception as e:
                 # Mark as failed and re-raise
                 newsletter.update_status(NewsletterStatus.FAILED)
                 newsletter.set_error(str(e))
                 await db.commit()
-                
+
                 increment_counter("newsletters_failed_total")
                 logger.error(f"Newsletter processing failed: {newsletter.id}, error: {e}")
                 raise
-    
+
     async def retry_failed_processing(self, newsletter_id: str) -> Newsletter:
         """
         Retry processing for a failed newsletter.
-        
+
         Args:
             newsletter_id: Newsletter ID to retry
-            
+
         Returns:
             Newsletter model with updated status
-            
+
         Raises:
             ProcessingError: If retry fails
             ValidationError: If newsletter not found or not retryable
@@ -248,47 +244,51 @@ class NewsletterProcessor:
             newsletter = await db.get(Newsletter, newsletter_id)
             if not newsletter:
                 raise ValidationError(f"Newsletter not found: {newsletter_id}")
-            
+
             if newsletter.status != NewsletterStatus.FAILED.value:
                 raise ValidationError(f"Newsletter {newsletter_id} is not in failed state")
-            
+
             logger.info(f"Retrying failed newsletter processing: {newsletter.id}")
-            
+
             # Reset status and clear error
             newsletter.update_status(NewsletterStatus.PENDING)
             newsletter.clear_error()
             await db.commit()
-            
+
             try:
                 # Load newsletter profile if exists
                 newsletter_profile = None
                 if newsletter.newsletter_profile_id:
-                    newsletter_profile = self.newsletter_config.get_profile(newsletter.newsletter_profile_id)
+                    newsletter_profile = self.newsletter_config.get_profile(
+                        newsletter.newsletter_profile_id
+                    )
 
                 # Process through pipeline
                 await self._process_newsletter_pipeline(newsletter, db, newsletter_profile)
-                
+
                 increment_counter("newsletters_retried_total")
-                logger.info(f"Newsletter retry completed: {newsletter.id}, status: {newsletter.status}")
-                
+                logger.info(
+                    f"Newsletter retry completed: {newsletter.id}, status: {newsletter.status}"
+                )
+
                 return newsletter
-                
+
             except Exception as e:
                 # Mark as failed again
                 newsletter.update_status(NewsletterStatus.FAILED)
                 newsletter.set_error(str(e))
                 await db.commit()
-                
+
                 increment_counter("newsletters_retry_failed_total")
                 logger.error(f"Newsletter retry failed: {newsletter.id}, error: {e}")
                 raise
-    
+
     async def _process_newsletter_pipeline(
         self,
         newsletter: Newsletter,
         db: AsyncSession,
-        newsletter_profile: Optional[NewsletterProfile] = None,
-        processing_options: Optional[Dict[str, Any]] = None
+        newsletter_profile: NewsletterProfile | None = None,
+        processing_options: dict[str, Any] | None = None,
     ) -> None:
         """Internal method to run the complete processing pipeline."""
         options = processing_options or {}
@@ -326,27 +326,26 @@ class NewsletterProcessor:
             ):
                 if key not in tts_opts:
                     tts_opts[key] = getattr(tts_cfg, key)
-        
+
         # Capture attributes to avoid lazy loading issues after commit
         newsletter_id = newsletter.id
         newsletter_url = newsletter.url
         newsletter_content = newsletter.content
-        
+
         try:
             # Step 1: Content Extraction
             logger.info(f"Step 1: Extracting content for newsletter {newsletter_id}")
             newsletter.update_status(NewsletterStatus.EXTRACTING)
             await db.commit()
             await db.refresh(newsletter)  # Refresh to avoid detached instance issues
-            
+
             if newsletter_url:
                 extracted = await self.content_extractor.extract_from_url(newsletter_url)
             else:
                 extracted = await self.content_extractor.extract_from_text(
-                    newsletter_content,
-                    content_type="text"
+                    newsletter_content, content_type="text"
                 )
-            
+
             # Update newsletter with extracted content
             newsletter.set_extracted_content(extracted.content)
             if extracted.title and not newsletter.title:
@@ -361,13 +360,13 @@ class NewsletterProcessor:
 
             await db.commit()
             await db.refresh(newsletter)
-            
+
             # Step 2: LLM Summarization
             logger.info(f"Step 2: Summarizing content for newsletter {newsletter_id}")
             newsletter.update_status(NewsletterStatus.SUMMARIZING)
             await db.commit()
             await db.refresh(newsletter)
-            
+
             summary_response = await self.llm_summarizer.summarize_newsletter(
                 content=extracted.content,
                 title=extracted.title,
@@ -376,7 +375,7 @@ class NewsletterProcessor:
                 focus_areas=options.get("focus_areas"),
                 mode=options.get("mode", "monologue"),
             )
-            
+
             # Create episode record. Use the LLM summary as the description so
             # podcast apps and the generated RSS feed show meaningful preview text.
             # For dialogue scripts, the first Host: line makes a good teaser.
@@ -395,24 +394,23 @@ class NewsletterProcessor:
                 summary_text=summary_response.summary,
                 description=description_text,
             )
-            
+
             # Set AI provider info
             episode.set_ai_providers(
-                llm_provider=summary_response.provider,
-                llm_model=summary_response.model
+                llm_provider=summary_response.provider, llm_model=summary_response.model
             )
 
             # Set LLM cost tracking info
             episode.set_cost_info(
                 llm_input_tokens=summary_response.input_tokens,
                 llm_output_tokens=summary_response.output_tokens,
-                llm_cost=summary_response.cost
+                llm_cost=summary_response.cost,
             )
 
             db.add(episode)
             await db.commit()
             await db.refresh(episode)
-            
+
             # Step 3: TTS Generation
             logger.info(f"Step 3: Generating audio for episode {episode.id}")
             newsletter.update_status(NewsletterStatus.GENERATING_AUDIO)
@@ -428,7 +426,9 @@ class NewsletterProcessor:
                 slug=newsletter.slug,
                 issue_number=newsletter.issue_number,
                 title=newsletter.title,
-                date=newsletter.publication_date.strftime("%Y-%m-%d") if newsletter.publication_date else datetime.now().strftime("%Y-%m-%d")
+                date=newsletter.publication_date.strftime("%Y-%m-%d")
+                if newsletter.publication_date
+                else datetime.now().strftime("%Y-%m-%d"),
             )
 
             # Ensure target directory exists (the engine writes directly here)
@@ -463,18 +463,20 @@ class NewsletterProcessor:
 
             # The engine writes straight to target_file_path; store its relative form.
             from pathlib import Path
-            relative_path = self.storage_manager.get_relative_path(Path(tts_response.audio_file_path))
+
+            relative_path = self.storage_manager.get_relative_path(
+                Path(tts_response.audio_file_path)
+            )
 
             # Update episode with audio info
             episode.set_audio_info(
                 audio_file_path=relative_path,
                 duration_seconds=tts_response.duration_seconds,
-                file_size_bytes=tts_response.file_size_bytes
+                file_size_bytes=tts_response.file_size_bytes,
             )
-            
+
             episode.set_ai_providers(
-                tts_provider=tts_response.provider,
-                tts_voice=tts_response.voice
+                tts_provider=tts_response.provider, tts_voice=tts_response.voice
             )
 
             # Set TTS cost tracking info (Kokoro is local → zero cost,
@@ -491,6 +493,7 @@ class NewsletterProcessor:
             if newsletter_profile and target_file_path.suffix.lower() == ".mp3":
                 try:
                     from src.lib.mp3_tagger import MP3Tagger
+
                     tagger = MP3Tagger(
                         cover_cache_dir=self.storage_manager.base_audio_dir / "_covers"
                     )
@@ -515,7 +518,7 @@ class NewsletterProcessor:
             episode.update_status(EpisodeStatus.COMPLETED)
             await db.commit()
             await db.refresh(episode)
-            
+
             # Capture episode attributes before accessing newsletter
             episode_id_final = episode.id
             episode_duration = episode.formatted_duration
@@ -538,13 +541,15 @@ class NewsletterProcessor:
             # Regenerate playlist + RSS feed for this profile (best-effort)
             if newsletter_profile and newsletter.newsletter_profile_id:
                 try:
-                    await self._regenerate_feeds(newsletter.newsletter_profile_id, newsletter_profile)
+                    await self._regenerate_feeds(
+                        newsletter.newsletter_profile_id, newsletter_profile
+                    )
                 except Exception as exc:
                     logger.warning(f"Feed/playlist regeneration failed (non-fatal): {exc}")
-            
+
         except Exception as e:
             logger.error(f"Pipeline step failed for newsletter {newsletter_id}: {e}")
-            raise ProcessingError(f"Processing pipeline failed: {e}")
+            raise ProcessingError(f"Processing pipeline failed: {e}") from e
 
     @staticmethod
     def _format_episode_title(newsletter, profile, summary_response) -> str:
@@ -560,9 +565,7 @@ class NewsletterProcessor:
         if llm_title and llm_title.lower() not in ("untitled", "untitled episode"):
             return llm_title
         podcast_title = (
-            profile.podcast_metadata.title
-            if profile and profile.podcast_metadata
-            else ""
+            profile.podcast_metadata.title if profile and profile.podcast_metadata else ""
         )
         if newsletter.issue_number and podcast_title:
             return f"{podcast_title} — Issue {newsletter.issue_number}"
@@ -570,17 +573,15 @@ class NewsletterProcessor:
             return podcast_title
         return (newsletter.title or "Untitled Episode").strip()
 
-    async def _regenerate_feeds(
-        self, profile_id: str, profile
-    ) -> None:
+    async def _regenerate_feeds(self, profile_id: str, profile) -> None:
         """Rebuild the per-profile M3U playlist and RSS feed from all DB episodes.
 
         Best-effort: callers should wrap in try/except. This walks all
         episodes for the profile, writes the playlist + feed atomically,
         and returns when done.
         """
-        from pathlib import Path
         from sqlalchemy import select
+
         from src.lib.playlist_generator import PlaylistEntry, PlaylistGenerator
         from src.lib.podcast_feed import FeedEpisode, PodcastFeedGenerator
         from src.models.episode import Episode
@@ -600,11 +601,11 @@ class NewsletterProcessor:
         if not rows:
             return
 
-        base_audio_dir = self.storage_manager.base_audio_dir
         # base_audio_dir is e.g. "data/audio" relative to CWD; audio_file_path
         # in the DB is e.g. "data/audio/the-batch/x.mp3" (relative to CWD too).
         # So we resolve from CWD, not from base_audio_dir.parent.
         from pathlib import Path as _Path
+
         cwd = _Path.cwd()
         playlists_dir = cwd / "data" / "playlists"
         feeds_dir = cwd / "data" / "feeds"
@@ -617,8 +618,11 @@ class NewsletterProcessor:
             stored_path = _Path(episode.audio_file_path)
             audio_abs = stored_path if stored_path.is_absolute() else (cwd / stored_path).resolve()
             title = self._format_episode_title(
-                newsletter, profile,
-                type("_S", (), {"title": episode.title or "", "summary": episode.summary_text or ""})(),
+                newsletter,
+                profile,
+                type(
+                    "_S", (), {"title": episode.title or "", "summary": episode.summary_text or ""}
+                )(),
             )
             duration = int(episode.duration_seconds or 0)
             playlist_entries.append(
@@ -652,16 +656,16 @@ class NewsletterProcessor:
         )
         logger.info(f"Wrote RSS feed: {feed_path} ({len(feed_episodes)} entries)")
 
-    async def get_processing_status(self, newsletter_id: str) -> Dict[str, Any]:
+    async def get_processing_status(self, newsletter_id: str) -> dict[str, Any]:
         """
         Get detailed processing status for a newsletter.
-        
+
         Args:
             newsletter_id: Newsletter ID to check
-            
+
         Returns:
             Dictionary with processing status and details
-            
+
         Raises:
             ValidationError: If newsletter not found
         """
@@ -669,7 +673,7 @@ class NewsletterProcessor:
             newsletter = await db.get(Newsletter, newsletter_id)
             if not newsletter:
                 raise ValidationError(f"Newsletter not found: {newsletter_id}")
-            
+
             status_info = {
                 "newsletter_id": newsletter.id,
                 "status": newsletter.status,
@@ -678,9 +682,9 @@ class NewsletterProcessor:
                 "updated_at": newsletter.updated_at.isoformat(),
                 "word_count": newsletter.word_count,
                 "error_message": newsletter.error_message,
-                "episode": None
+                "episode": None,
             }
-            
+
             # Add episode info if available
             if newsletter.episode_id:
                 episode = await db.get(Episode, newsletter.episode_id)
@@ -693,54 +697,52 @@ class NewsletterProcessor:
                         "file_size": episode.formatted_file_size,
                         "audio_file_path": episode.audio_file_path,
                         "llm_provider": episode.llm_provider,
-                        "tts_provider": episode.tts_provider
+                        "tts_provider": episode.tts_provider,
                     }
-            
+
             return status_info
-    
-    async def health_check(self) -> Dict[str, bool]:
+
+    async def health_check(self) -> dict[str, bool]:
         """
         Check health of all processing services.
-        
+
         Returns:
             Dictionary with service health status
         """
         health_status = {
             "content_extractor": False,
             "llm_summarizer": False,
-            "tts_generator": False
+            "tts_generator": False,
         }
-        
+
         try:
             if self.content_extractor:
                 # Content extractor doesn't have health check, assume healthy if initialized
                 health_status["content_extractor"] = True
-            
+
             if self.llm_summarizer:
                 health_status["llm_summarizer"] = await self.llm_summarizer.health_check()
-            
+
             if self.tts_generator:
                 health_status["tts_generator"] = await self.tts_generator.health_check()
-                
+
         except Exception as e:
             logger.error(f"Health check error: {e}")
-        
+
         return health_status
-    
-    def get_service_info(self) -> Dict[str, Any]:
+
+    def get_service_info(self) -> dict[str, Any]:
         """Get information about configured services."""
         info = {
-            "content_extractor": {
-                "enabled": self.content_extractor is not None
-            },
+            "content_extractor": {"enabled": self.content_extractor is not None},
             "llm_summarizer": {},
-            "tts_generator": {}
+            "tts_generator": {},
         }
-        
+
         if self.llm_summarizer:
             info["llm_summarizer"] = self.llm_summarizer.get_provider_info()
-        
+
         if self.tts_generator:
             info["tts_generator"] = self.tts_generator.get_provider_info()
-        
+
         return info

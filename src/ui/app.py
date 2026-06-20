@@ -2,7 +2,6 @@
 
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
 import gradio as gr
 
@@ -55,7 +54,7 @@ def get_episodes() -> list[dict]:
         conn.close()
 
 
-def format_duration(seconds: Optional[int]) -> str:
+def format_duration(seconds: int | None) -> str:
     """Format seconds as MM:SS or HH:MM:SS."""
     if seconds is None:
         return "--:--"
@@ -67,7 +66,7 @@ def format_duration(seconds: Optional[int]) -> str:
     return f"{h}:{m:02d}:{s:02d}"
 
 
-def format_size(size_bytes: Optional[int]) -> str:
+def format_size(size_bytes: int | None) -> str:
     """Format bytes as human-readable size."""
     if size_bytes is None:
         return "--"
@@ -78,14 +77,14 @@ def format_size(size_bytes: Optional[int]) -> str:
     return f"{size_bytes:.1f} TB"
 
 
-def format_cost(cost: Optional[float]) -> str:
+def format_cost(cost: float | None) -> str:
     """Format cost as dollar amount."""
     if cost is None or cost == 0:
         return "free"
     return f"${cost:.4f}"
 
 
-def resolve_audio_path(audio_file_path: Optional[str]) -> Optional[str]:
+def resolve_audio_path(audio_file_path: str | None) -> str | None:
     """Resolve an audio file path to an absolute path."""
     if not audio_file_path:
         return None
@@ -118,13 +117,15 @@ def build_episodes_table(episodes: list[dict]) -> list[list[str]]:
     """Build table data from episodes."""
     rows = []
     for ep in episodes:
-        rows.append([
-            ep.get("title", "Untitled"),
-            ep.get("status", "unknown"),
-            format_duration(ep.get("duration_seconds")),
-            (ep.get("created_at") or "")[:10],
-            format_cost(ep.get("total_cost")),
-        ])
+        rows.append(
+            [
+                ep.get("title", "Untitled"),
+                ep.get("status", "unknown"),
+                format_duration(ep.get("duration_seconds")),
+                (ep.get("created_at") or "")[:10],
+                format_cost(ep.get("total_cost")),
+            ]
+        )
     return rows
 
 
@@ -140,20 +141,20 @@ def get_episode_details(episodes: list[dict], index: int) -> tuple:
     if ep.get("tts_voice"):
         tts_info += f" ({ep['tts_voice']})"
 
-    details = f"""### {ep.get('title', 'Untitled')}
+    details = f"""### {ep.get("title", "Untitled")}
 
 | | |
 |---|---|
-| **Status** | {ep.get('status', 'unknown')} |
-| **Duration** | {format_duration(ep.get('duration_seconds'))} |
-| **File Size** | {format_size(ep.get('file_size_bytes'))} |
+| **Status** | {ep.get("status", "unknown")} |
+| **Duration** | {format_duration(ep.get("duration_seconds"))} |
+| **File Size** | {format_size(ep.get("file_size_bytes"))} |
 | **LLM** | {llm_info} |
 | **TTS** | {tts_info} |
-| **LLM Tokens** | {ep.get('llm_input_tokens', 0) or 0} in / {ep.get('llm_output_tokens', 0) or 0} out |
-| **LLM Cost** | {format_cost(ep.get('llm_cost'))} |
-| **TTS Cost** | {format_cost(ep.get('tts_cost'))} |
-| **Total Cost** | {format_cost(ep.get('total_cost'))} |
-| **Created** | {ep.get('created_at', '')} |
+| **LLM Tokens** | {ep.get("llm_input_tokens", 0) or 0} in / {ep.get("llm_output_tokens", 0) or 0} out |
+| **LLM Cost** | {format_cost(ep.get("llm_cost"))} |
+| **TTS Cost** | {format_cost(ep.get("tts_cost"))} |
+| **Total Cost** | {format_cost(ep.get("total_cost"))} |
+| **Created** | {ep.get("created_at", "")} |
 """
 
     if ep.get("newsletter_url"):

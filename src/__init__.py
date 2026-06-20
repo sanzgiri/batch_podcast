@@ -12,7 +12,7 @@ __email__ = "dev@newsletter-podcast.com"
 
 # Import main components for easy access
 # Use lazy imports to avoid importing heavy dependencies when not needed
-def __getattr__(name):
+def __getattr__(name: str) -> object:
     """Lazy import for package components."""
     if name == "app":
         from .api import app

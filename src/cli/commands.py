@@ -7,7 +7,9 @@ status monitoring, and service management.
 
 import asyncio
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -26,7 +28,7 @@ console = Console()
 
 @click.group()
 @click.version_option(version="1.0.0", prog_name="batch-podcast")
-def cli():
+def cli() -> None:
     """Newsletter Podcast Generator CLI - Convert newsletters to podcast episodes."""
     pass
 
@@ -78,9 +80,9 @@ def process_url(
     pitch: float,
     output_format: str,
     quality: str,
-    focus_areas: tuple,
+    focus_areas: tuple[str, ...],
     wait: bool,
-):
+) -> None:
     """Process a newsletter from URL."""
     console.print(f"[bold blue]Processing newsletter from URL:[/bold blue] {url}")
 
@@ -108,7 +110,7 @@ def process_url(
     if target_length is not None:
         processing_options["target_length"] = target_length
     if focus_areas:
-        processing_options["focus_areas"] = list(focus_areas)
+        processing_options["focus_areas"] = list(focus_areas)  # type: ignore[assignment]
 
     # Run processing
     try:
@@ -181,9 +183,9 @@ def process_file(
     pitch: float,
     output_format: str,
     quality: str,
-    focus_areas: tuple,
+    focus_areas: tuple[str, ...],
     wait: bool,
-):
+) -> None:
     """Process a newsletter from text file."""
     console.print(f"[bold blue]Processing newsletter from file:[/bold blue] {content_file}")
 
@@ -233,7 +235,7 @@ def process_file(
 
 @cli.command()
 @click.argument("newsletter_id")
-def status(newsletter_id: str):
+def status(newsletter_id: str) -> None:
     """Check processing status of a newsletter."""
     console.print(f"[bold blue]Checking status for newsletter:[/bold blue] {newsletter_id}")
 
@@ -249,7 +251,7 @@ def status(newsletter_id: str):
 @cli.command()
 @click.argument("newsletter_id")
 @click.option("--wait", is_flag=True, help="Wait for retry to complete")
-def retry(newsletter_id: str, wait: bool):
+def retry(newsletter_id: str, wait: bool) -> None:
     """Retry processing for a failed newsletter."""
     console.print(f"[bold blue]Retrying newsletter processing:[/bold blue] {newsletter_id}")
 
@@ -265,7 +267,7 @@ def retry(newsletter_id: str, wait: bool):
 
 
 @cli.command()
-def health():
+def health() -> None:
     """Check health of processing services."""
     console.print("[bold blue]Checking service health...[/bold blue]")
 
@@ -279,7 +281,7 @@ def health():
 
 
 @cli.command()
-def service_info():
+def service_info() -> None:
     """Display information about configured services."""
     console.print("[bold blue]Service Configuration:[/bold blue]")
 
@@ -293,7 +295,7 @@ def service_info():
 
 
 @cli.command()
-def voices():
+def voices() -> None:
     """List available TTS voices."""
     console.print("[bold blue]Available TTS Voices:[/bold blue]")
 
@@ -346,7 +348,7 @@ def batch_process(
     start_issue: int | None,
     dry_run: bool,
     parallel: int,
-):
+) -> None:
     """Auto-discover and process new newsletter episodes in batch.
 
     Uses RSS if the profile has one configured, otherwise falls back to
@@ -397,7 +399,7 @@ def batch_process(
                 processor.run(
                     profile_id=profile_id,
                     latest=latest,
-                    all_unprocessed=all_unprocessed,
+                    _all_unprocessed=all_unprocessed,
                     from_date=parsed_from,
                     to_date=parsed_to,
                     start_issue=start_issue,
@@ -416,7 +418,7 @@ def batch_process(
         sys.exit(1)
 
 
-def _parse_date_or_exit(s: str):
+def _parse_date_or_exit(s: str) -> datetime:
     from datetime import datetime
 
     try:
@@ -426,7 +428,7 @@ def _parse_date_or_exit(s: str):
         sys.exit(1)
 
 
-def _display_batch_result(result, dry_run: bool = False):
+def _display_batch_result(result: Any, dry_run: bool = False) -> None:
     """Pretty-print a BatchResult."""
     from rich.table import Table
 
@@ -477,9 +479,9 @@ async def _process_newsletter_url_async(
     url: str,
     user_id: str | None,
     newsletter_profile_id: str | None,
-    processing_options: dict,
+    processing_options: dict[str, Any],
     wait: bool,
-):
+) -> Any:
     """Process newsletter from URL asynchronously."""
     config = get_config()
 
@@ -520,9 +522,9 @@ async def _process_newsletter_text_async(
     title: str | None,
     content_type: str,
     user_id: str | None,
-    processing_options: dict,
+    processing_options: dict[str, Any],
     wait: bool,
-):
+) -> Any:
     """Process newsletter from text asynchronously."""
     config = get_config()
 
@@ -559,7 +561,7 @@ async def _process_newsletter_text_async(
             return None
 
 
-async def _get_newsletter_status_async(newsletter_id: str):
+async def _get_newsletter_status_async(newsletter_id: str) -> dict[str, Any]:
     """Get newsletter status asynchronously."""
     config = get_config()
 
@@ -567,7 +569,7 @@ async def _get_newsletter_status_async(newsletter_id: str):
         return await processor.get_processing_status(newsletter_id)
 
 
-async def _retry_newsletter_async(newsletter_id: str, wait: bool):
+async def _retry_newsletter_async(newsletter_id: str, wait: bool) -> Any:
     """Retry newsletter processing asynchronously."""
     config = get_config()
 
@@ -590,7 +592,7 @@ async def _retry_newsletter_async(newsletter_id: str, wait: bool):
             return None
 
 
-async def _check_health_async():
+async def _check_health_async() -> dict[str, bool]:
     """Check service health asynchronously."""
     config = get_config()
 
@@ -598,7 +600,7 @@ async def _check_health_async():
         return await processor.health_check()
 
 
-async def _get_service_info_async():
+async def _get_service_info_async() -> dict[str, Any]:
     """Get service info asynchronously."""
     config = get_config()
 
@@ -606,18 +608,20 @@ async def _get_service_info_async():
         return processor.get_service_info()
 
 
-async def _get_available_voices_async():
+async def _get_available_voices_async() -> list[str]:
     """Get available voices asynchronously."""
     config = get_config()
 
     async with NewsletterProcessor(config) as processor:
-        return processor.tts_generator.get_available_voices()
+        if processor.tts_generator is not None:
+            return processor.tts_generator.get_available_voices()
+        return []
 
 
 # Display helper functions
 
 
-def _display_newsletter_result(newsletter):
+def _display_newsletter_result(newsletter: Any) -> None:
     """Display newsletter processing result."""
     # Create a panel with newsletter info
     info_text = f"""
@@ -639,7 +643,7 @@ def _display_newsletter_result(newsletter):
     console.print(Panel(info_text, title="Newsletter Processing Result", expand=False))
 
 
-def _display_newsletter_status(status_info):
+def _display_newsletter_status(status_info: dict[str, Any]) -> None:
     """Display newsletter status information."""
     info_text = f"""
 [bold]Newsletter ID:[/bold] {status_info["newsletter_id"]}
@@ -669,7 +673,7 @@ def _display_newsletter_status(status_info):
     console.print(Panel(info_text, title="Newsletter Status", expand=False))
 
 
-def _display_health_status(health_status):
+def _display_health_status(health_status: dict[str, bool]) -> None:
     """Display service health status."""
     table = Table(title="Service Health Status")
     table.add_column("Service", style="cyan")
@@ -682,7 +686,7 @@ def _display_health_status(health_status):
     console.print(table)
 
 
-def _display_service_info(service_info):
+def _display_service_info(service_info: dict[str, Any]) -> None:
     """Display service configuration information."""
     for service_name, info in service_info.items():
         service_title = service_name.replace("_", " ").title()
@@ -699,7 +703,7 @@ def _display_service_info(service_info):
             console.print(f"[bold]{service_title}:[/bold] {info}")
 
 
-def _display_available_voices(voices):
+def _display_available_voices(voices: list[str]) -> None:
     """Display available TTS voices."""
     if voices:
         table = Table(title="Available TTS Voices")

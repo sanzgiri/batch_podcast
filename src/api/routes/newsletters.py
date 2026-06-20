@@ -5,6 +5,7 @@ This module provides FastAPI routes for newsletter submission,
 status monitoring, and processing management.
 """
 
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -78,7 +79,7 @@ class ProcessingStatusResponse(BaseModel):
     episode: dict[str, Any] | None
 
 
-async def get_newsletter_processor():
+async def get_newsletter_processor() -> AsyncGenerator[NewsletterProcessor, None]:
     """Dependency to get newsletter processor instance."""
     config = get_config()
     async with NewsletterProcessor(config) as processor:
@@ -90,7 +91,7 @@ async def submit_newsletter_from_url(
     request: NewsletterURLRequest,
     background_tasks: BackgroundTasks,
     _processor: NewsletterProcessor = Depends(get_newsletter_processor),
-):
+) -> NewsletterResponse:
     """
     Submit a newsletter URL for processing.
 
@@ -141,7 +142,7 @@ async def submit_newsletter_from_text(
     request: NewsletterTextRequest,
     background_tasks: BackgroundTasks,
     _processor: NewsletterProcessor = Depends(get_newsletter_processor),
-):
+) -> NewsletterResponse:
     """
     Submit newsletter text content for processing.
 
@@ -194,7 +195,7 @@ async def submit_newsletter_from_text(
 @router.get("/{newsletter_id}/status", response_model=ProcessingStatusResponse)
 async def get_newsletter_status(
     newsletter_id: str, processor: NewsletterProcessor = Depends(get_newsletter_processor)
-):
+) -> ProcessingStatusResponse:
     """
     Get processing status for a newsletter.
 
@@ -221,7 +222,7 @@ async def retry_newsletter_processing(
     newsletter_id: str,
     background_tasks: BackgroundTasks,
     _processor: NewsletterProcessor = Depends(get_newsletter_processor),
-):
+) -> NewsletterResponse:
     """
     Retry processing for a failed newsletter.
 
@@ -250,7 +251,9 @@ async def retry_newsletter_processing(
 
 
 @router.get("/health")
-async def health_check(processor: NewsletterProcessor = Depends(get_newsletter_processor)):
+async def health_check(
+    processor: NewsletterProcessor = Depends(get_newsletter_processor),
+) -> dict[str, Any]:
     """
     Health check endpoint for newsletter processing services.
 
@@ -274,7 +277,9 @@ async def health_check(processor: NewsletterProcessor = Depends(get_newsletter_p
 
 
 @router.get("/service-info")
-async def get_service_info(processor: NewsletterProcessor = Depends(get_newsletter_processor)):
+async def get_service_info(
+    processor: NewsletterProcessor = Depends(get_newsletter_processor),
+) -> dict[str, Any]:
     """
     Get information about configured processing services.
 
@@ -299,7 +304,7 @@ async def get_service_info(processor: NewsletterProcessor = Depends(get_newslett
 
 async def _process_newsletter_url(
     url: str, user_id: str | None, processing_options: dict[str, Any]
-):
+) -> None:
     """Background task to process newsletter from URL."""
     try:
         config = get_config()
@@ -319,7 +324,7 @@ async def _process_newsletter_text(
     content_type: str,
     user_id: str | None,
     processing_options: dict[str, Any],
-):
+) -> None:
     """Background task to process newsletter from text."""
     try:
         config = get_config()
@@ -337,7 +342,7 @@ async def _process_newsletter_text(
         logger.error(f"Background processing failed for text content: {e}")
 
 
-async def _retry_newsletter_processing(newsletter_id: str):
+async def _retry_newsletter_processing(newsletter_id: str) -> None:
     """Background task to retry newsletter processing."""
     try:
         config = get_config()

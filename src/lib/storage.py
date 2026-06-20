@@ -6,6 +6,7 @@ Handles smart file organization based on newsletter profiles.
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from src.lib.config import Config
 from src.lib.logging import get_logger
@@ -161,7 +162,7 @@ class StorageManager:
         """
         output_dir = self.get_output_directory(newsletter_profile)
 
-        audio_files = []
+        audio_files: list[Path] = []
         for ext in [".mp3", ".wav"]:
             audio_files.extend(output_dir.glob(f"*{ext}"))
 
@@ -197,7 +198,9 @@ class StorageManager:
         logger.info(f"Cleaned up {deleted_count} old audio files")
         return deleted_count
 
-    def get_storage_stats(self, newsletter_profile: NewsletterProfile | None = None) -> dict:
+    def get_storage_stats(
+        self, newsletter_profile: NewsletterProfile | None = None
+    ) -> dict[str, Any]:
         """
         Get storage statistics.
 

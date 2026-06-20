@@ -11,6 +11,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
+from types import TracebackType
 from typing import Any
 
 import aiohttp
@@ -103,7 +104,7 @@ def _build_system_prompt(mode: str) -> str:
     return _MONOLOGUE_SYSTEM_PROMPT
 
 
-def _recover_truncated_json(raw: str) -> dict | None:
+def _recover_truncated_json(raw: str) -> dict[str, Any] | None:
     """Best-effort recovery from a truncated/malformed JSON LLM response.
 
     Local models sometimes hit num_predict mid-string. The dialogue inside
@@ -148,7 +149,9 @@ def _recover_truncated_json(raw: str) -> dict | None:
     return {"summary": summary, "title": title, "key_points": []}
 
 
-def _normalize_parsed_response(parsed: dict, fallback_title: str = "Untitled Episode") -> dict:
+def _normalize_parsed_response(
+    parsed: dict[str, Any], fallback_title: str = "Untitled Episode"
+) -> dict[str, Any]:
     """Normalize an LLM JSON response, tolerating missing/renamed fields.
 
     Smaller local models (e.g. llama3.1:8b) often omit or rename fields. This
@@ -268,12 +271,12 @@ class SummaryRequest:
     title: str | None = None
     style: str = "conversational"  # conversational, formal, casual
     target_length: str = "medium"  # short, medium, long
-    focus_areas: list[str] = None
+    focus_areas: list[str] | None = None
     mode: str = "monologue"  # monologue (single narrator) or dialogue (two hosts)
     host_a_name: str = "Host"
     host_b_name: str = "Guest"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.focus_areas is None:
             self.focus_areas = []
 
@@ -327,7 +330,7 @@ class OpenAIClient(BaseLLMClient):
 
         self.session: aiohttp.ClientSession | None = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "OpenAIClient":
         """Async context manager entry."""
         self.session = aiohttp.ClientSession(
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
@@ -335,7 +338,12 @@ class OpenAIClient(BaseLLMClient):
         )
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit."""
         if self.session:
             await self.session.close()
@@ -467,12 +475,17 @@ class OllamaClient(BaseLLMClient):
 
         self.session: aiohttp.ClientSession | None = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "OllamaClient":
         """Async context manager entry."""
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout))
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit."""
         if self.session:
             await self.session.close()
@@ -608,23 +621,27 @@ class LLMSummarizer:
         """Initialize LLM Summarizer with configuration."""
         self.config = config
         self.provider = LLMProvider(config.llm.provider)
+        self.client: OpenAIClient | OllamaClient
 
         # Initialize client based on provider
         if self.provider == LLMProvider.OPENAI:
             self.client = OpenAIClient(config)
-        elif self.provider == LLMProvider.OLLAMA:
-            self.client = OllamaClient(config)
         else:
-            raise ValidationError(f"Unsupported LLM provider: {self.provider}")
+            self.client = OllamaClient(config)
 
         logger.info(f"Initialized LLM Summarizer with provider: {self.provider}")
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "LLMSummarizer":
         """Async context manager entry."""
         await self.client.__aenter__()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit."""
         await self.client.__aexit__(exc_type, exc_val, exc_tb)
 
@@ -706,17 +723,9 @@ class LLMSummarizer:
 
     def get_provider_info(self) -> dict[str, Any]:
         """Get information about the current provider."""
-        if self.provider == LLMProvider.OPENAI:
-            return {
-                "provider": "openai",
-                "model": self.client.model,
-                "base_url": self.client.base_url,
-            }
-        elif self.provider == LLMProvider.OLLAMA:
-            return {
-                "provider": "ollama",
-                "model": self.client.model,
-                "base_url": self.client.base_url,
-            }
-        else:
-            return {"provider": str(self.provider)}
+        provider = "openai" if self.provider == LLMProvider.OPENAI else "ollama"
+        return {
+            "provider": provider,
+            "model": self.client.model,
+            "base_url": self.client.base_url,
+        }

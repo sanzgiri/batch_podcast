@@ -2,6 +2,7 @@
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import gradio as gr
 
@@ -22,7 +23,7 @@ def get_db_path() -> Path:
     return DEFAULT_DB_PATH
 
 
-def get_episodes() -> list[dict]:
+def get_episodes() -> list[dict[str, Any]]:
     """Fetch all completed episodes from the database."""
     db_path = get_db_path()
     if not db_path.exists():
@@ -73,7 +74,7 @@ def format_size(size_bytes: int | None) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
         if size_bytes < 1024:
             return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
+        size_bytes /= 1024  # type: ignore[assignment]
     return f"{size_bytes:.1f} TB"
 
 
@@ -113,7 +114,7 @@ def resolve_audio_path(audio_file_path: str | None) -> str | None:
     return None
 
 
-def build_episodes_table(episodes: list[dict]) -> list[list[str]]:
+def build_episodes_table(episodes: list[dict[str, Any]]) -> list[list[str]]:
     """Build table data from episodes."""
     rows = []
     for ep in episodes:
@@ -129,7 +130,7 @@ def build_episodes_table(episodes: list[dict]) -> list[list[str]]:
     return rows
 
 
-def get_episode_details(episodes: list[dict], index: int) -> tuple:
+def get_episode_details(episodes: list[dict[str, Any]], index: int) -> tuple[str, str | None, str]:
     """Get details for a selected episode. Returns (details_md, audio_path, summary)."""
     if not episodes or index < 0 or index >= len(episodes):
         return "No episode selected.", None, ""
@@ -175,9 +176,9 @@ def create_app() -> gr.Blocks:
     """Create the Gradio app."""
 
     # Load episodes once at startup; refresh button reloads
-    episodes_state: list[dict] = []
+    episodes_state: list[dict[str, Any]] = []
 
-    def refresh_episodes():
+    def refresh_episodes() -> list[list[str]]:
         nonlocal episodes_state
         episodes_state = get_episodes()
         table_data = build_episodes_table(episodes_state)
@@ -185,7 +186,7 @@ def create_app() -> gr.Blocks:
             table_data = [["No episodes found", "", "", "", ""]]
         return table_data
 
-    def on_select(evt: gr.SelectData):
+    def on_select(evt: gr.SelectData) -> tuple[str, str | None, str]:
         row_index = evt.index[0]
         details, audio, summary = get_episode_details(episodes_state, row_index)
         return details, audio, summary

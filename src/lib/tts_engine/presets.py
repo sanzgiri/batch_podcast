@@ -12,13 +12,14 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 _DATA_DIR = Path(__file__).parent / "data"
 PRESETS_DIR = _DATA_DIR / "presets"
 PRON_DIR = _DATA_DIR / "pronunciations"
 
 
-def load_preset(name: str) -> dict:
+def load_preset(name: str) -> dict[str, Any]:
     """Load a named preset from the bundled presets directory."""
     path = PRESETS_DIR / f"{name}.json"
     if not path.is_file():
@@ -28,7 +29,7 @@ def load_preset(name: str) -> dict:
         return json.load(fh)
 
 
-def load_pronunciations(name_or_path: str) -> dict:
+def load_pronunciations(name_or_path: str) -> dict[str, str]:
     """Load a pronunciation dict by name (bundled) or file path."""
     if os.path.isfile(name_or_path):
         path = Path(name_or_path)

@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 from src.lib.config import Config
@@ -41,6 +42,7 @@ from src.lib.tts_engine import (
     render_chapter_blocks,
     write_wav,
 )
+from src.lib.tts_engine.blocks import Chapter
 from src.lib.utils import ensure_directory, generate_uuid, get_audio_duration, get_file_size
 
 logger = get_logger(__name__)
@@ -144,7 +146,12 @@ class KokoroTTSClient(BaseTTSClient):
         await asyncio.to_thread(self._init_pipeline)
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         self.pipeline = None
 
     # ------------------------------------------------------------------ init
@@ -261,7 +268,9 @@ class KokoroTTSClient(BaseTTSClient):
             )
         return voices
 
-    def _build_blocks_and_pre(self, text: str, request: TTSRequest, pron: dict[str, str]):
+    def _build_blocks_and_pre(
+        self, text: str, request: TTSRequest, pron: dict[str, str]
+    ) -> list[Chapter]:
         """Parse text into blocks based on mode, applying pre-processing."""
         if request.mode == "dialogue":
             chapters, speaker_keys = parse_dialogue(text)
@@ -403,7 +412,12 @@ class TTSGenerator:
         await self.client.__aenter__()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         await self.client.__aexit__(exc_type, exc_val, exc_tb)
 
     async def generate_speech(

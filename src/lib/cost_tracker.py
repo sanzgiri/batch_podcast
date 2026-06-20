@@ -6,6 +6,7 @@ Tracks token usage (LLM) and character usage (TTS) with cost calculations.
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 
 class LLMProvider(StrEnum):
@@ -150,9 +151,9 @@ class ProcessingCosts:
         """Get TTS cost."""
         return self.tts_usage.cost if self.tts_usage else 0.0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
-        result = {
+        result: dict[str, Any] = {
             "total_cost": self.total_cost,
             "llm_cost": self.llm_cost,
             "tts_cost": self.tts_cost,
@@ -181,12 +182,12 @@ class ProcessingCosts:
         return result
 
 
-def get_llm_pricing_info() -> dict:
+def get_llm_pricing_info() -> dict[str, Any]:
     """Get current LLM pricing information."""
     return LLM_PRICING.copy()
 
 
-def get_tts_pricing_info() -> dict:
+def get_tts_pricing_info() -> dict[str, Any]:
     """Get current TTS pricing information."""
     return TTS_PRICING.copy()
 

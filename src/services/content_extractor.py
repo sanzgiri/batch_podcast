@@ -8,12 +8,13 @@ and processing.
 
 import re
 from dataclasses import dataclass
+from types import TracebackType
 from typing import Any
 from urllib.parse import urljoin
 
 import aiohttp
 import html2text
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from src.lib.config import Config
 from src.lib.exceptions import ContentExtractionError, ValidationError
@@ -35,10 +36,10 @@ class ExtractedContent:
     source_url: str | None = None
     author: str | None = None
     publication_date: str | None = None
-    images: list[str] = None
-    links: list[str] = None
+    images: list[str] | None = None
+    links: list[str] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.images is None:
             self.images = []
         if self.links is None:
@@ -70,7 +71,7 @@ class ContentExtractor:
         self.html_converter.ignore_images = True
         self.html_converter.body_width = 0  # No line wrapping
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "ContentExtractor":
         """Async context manager entry."""
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30),
@@ -78,7 +79,12 @@ class ContentExtractor:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit."""
         if self.session:
             await self.session.close()
@@ -360,12 +366,8 @@ class ContentExtractor:
         for selector in title_selectors:
             element = soup.select_one(selector)
             if element:
-                title = (
-                    element.get_text(strip=True)
-                    if hasattr(element, "get_text")
-                    else element.get("content", "")
-                )
-                if title and len(title.strip()) > 0:
+                title = element.get_text(strip=True) or str(element.get("content", ""))
+                if title.strip():
                     return clean_text(title)[:200]  # Limit title length
 
         return "Untitled Newsletter"
@@ -383,12 +385,8 @@ class ContentExtractor:
         for selector in author_selectors:
             element = soup.select_one(selector)
             if element:
-                author = (
-                    element.get_text(strip=True)
-                    if hasattr(element, "get_text")
-                    else element.get("content", "")
-                )
-                if author and len(author.strip()) > 0:
+                author = element.get_text(strip=True) or str(element.get("content", ""))
+                if author.strip():
                     return clean_text(author)[:100]
 
         return None
@@ -407,17 +405,17 @@ class ContentExtractor:
         for selector in date_selectors:
             element = soup.select_one(selector)
             if element:
-                date = (
+                date = str(
                     element.get("datetime")
                     or element.get("content")
                     or element.get_text(strip=True)
                 )
-                if date and len(date.strip()) > 0:
+                if date.strip():
                     return date.strip()
 
         return None
 
-    def _extract_main_content(self, soup: BeautifulSoup) -> BeautifulSoup:
+    def _extract_main_content(self, soup: BeautifulSoup) -> Tag | BeautifulSoup:
         """Extract main content area from HTML."""
         # Try different content area selectors
         content_selectors = [
@@ -440,12 +438,14 @@ class ContentExtractor:
         body = soup.find("body") or soup
         return body
 
-    def _extract_images(self, content: BeautifulSoup, base_url: str | None = None) -> list[str]:
+    def _extract_images(
+        self, content: Tag | BeautifulSoup, base_url: str | None = None
+    ) -> list[str]:
         """Extract image URLs from content."""
         images = []
 
         for img in content.find_all("img"):
-            src = img.get("src") or img.get("data-src")
+            src = str(img.get("src") or img.get("data-src") or "")
             if src:
                 # Convert relative URLs to absolute
                 if base_url and not src.startswith(("http://", "https://")):
@@ -456,12 +456,14 @@ class ContentExtractor:
 
         return list(set(images))  # Remove duplicates
 
-    def _extract_links(self, content: BeautifulSoup, base_url: str | None = None) -> list[str]:
+    def _extract_links(
+        self, content: Tag | BeautifulSoup, base_url: str | None = None
+    ) -> list[str]:
         """Extract links from content."""
         links = []
 
         for link in content.find_all("a", href=True):
-            href = link.get("href")
+            href = str(link.get("href", ""))
             if href:
                 # Convert relative URLs to absolute
                 if base_url and not href.startswith(("http://", "https://")):

@@ -6,6 +6,7 @@ generated podcast episodes and their metadata.
 """
 
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -79,7 +80,7 @@ class Episode(Base):
     # Relationship to newsletter
     newsletter = relationship("Newsletter", backref="episodes")
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize Episode instance."""
         super().__init__(**kwargs)
 
@@ -199,7 +200,7 @@ class Episode(Base):
         self.status = EpisodeStatus.PUBLISHED.value
         self.updated_at = now_utc()
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert episode to dictionary for API responses."""
         return {
             "id": self.id,
@@ -230,7 +231,7 @@ class Episode(Base):
             "updated_at": self.updated_at.isoformat(),
         }
 
-    def to_rss_item_dict(self) -> dict:
+    def to_rss_item_dict(self) -> dict[str, Any]:
         """Convert episode to dictionary for RSS feed items."""
         return {
             "title": self.title,

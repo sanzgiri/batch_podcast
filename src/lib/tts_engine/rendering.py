@@ -61,14 +61,14 @@ def load_blended_voice(pipeline: Any, spec: str) -> Any | None:
 # ---------------------------------------------------------------------------
 
 
-def silence(seconds: float) -> np.ndarray:
+def silence(seconds: float) -> Any:
     """Generate N seconds of silence at SAMPLE_RATE."""
     return np.zeros(int(SAMPLE_RATE * seconds), dtype=np.float32)
 
 
-def render_text(pipeline: Any, text: str, voice: Any, speed: float) -> np.ndarray:
+def render_text(pipeline: Any, text: str, voice: Any, speed: float) -> Any:
     """Render a single string through Kokoro and return float32 mono samples."""
-    pieces: list[np.ndarray] = []
+    pieces: list[Any] = []
     for _, _, audio in pipeline(text, voice=voice, speed=speed):
         a = audio.detach().cpu().numpy() if hasattr(audio, "detach") else np.asarray(audio)
         pieces.append(a.astype(np.float32))
@@ -82,12 +82,12 @@ def render_chapter_blocks(
     speed: float,
     quote_speed: float,
     dialogue_speed: float,
-) -> np.ndarray:
+) -> Any:
     """Render a list of Blocks into a single concatenated waveform.
 
     voices: dict with keys 'primary', 'quote' (optional), 'A', 'B' (dialogue mode).
     """
-    parts: list[np.ndarray] = []
+    parts: list[Any] = []
     for b in blocks:
         if b.kind == "silence":
             parts.append(silence(b.seconds))

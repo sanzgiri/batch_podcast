@@ -5,11 +5,12 @@ This module defines the Episode SQLAlchemy model for storing
 generated podcast episodes and their metadata.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy import Float, ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.lib.database import Base
 from src.lib.utils import format_duration, format_file_size, generate_uuid, now_utc
@@ -36,46 +37,46 @@ class Episode(Base):
     __tablename__ = "episodes"
 
     # Primary key
-    id = Column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
 
     # Foreign key to newsletter
-    newsletter_id = Column(String(36), ForeignKey("newsletters.id"), nullable=False, index=True)
+    newsletter_id: Mapped[str] = mapped_column(String(36), ForeignKey("newsletters.id"), index=True)
 
     # Episode content
-    title = Column(String(500), nullable=False, index=True)
-    description = Column(Text, nullable=False)
-    summary_text = Column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), index=True)
+    description: Mapped[str] = mapped_column(Text)
+    summary_text: Mapped[str] = mapped_column(Text)
 
     # Audio file information
-    audio_file_path = Column(String(1024), nullable=True)
-    audio_url = Column(String(2048), nullable=True)
-    duration_seconds = Column(Integer, nullable=True)
-    file_size_bytes = Column(Integer, nullable=True)
+    audio_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    audio_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(nullable=True)
 
     # Publication information
-    publication_date = Column(DateTime(timezone=True), nullable=False, default=now_utc)
+    publication_date: Mapped[datetime] = mapped_column(default=now_utc)
 
     # Processing status
-    status = Column(String(20), nullable=False, default=EpisodeStatus.PENDING.value, index=True)
+    status: Mapped[str] = mapped_column(String(20), default=EpisodeStatus.PENDING.value, index=True)
 
     # Processing metadata
-    llm_provider = Column(String(50), nullable=True)
-    llm_model = Column(String(100), nullable=True)
-    tts_provider = Column(String(50), nullable=True)
-    tts_voice = Column(String(100), nullable=True)
+    llm_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    llm_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tts_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    tts_voice: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Cost tracking
-    llm_input_tokens = Column(Integer, nullable=True)
-    llm_output_tokens = Column(Integer, nullable=True)
-    llm_total_tokens = Column(Integer, nullable=True)
-    llm_cost = Column(Float, nullable=True)
-    tts_characters = Column(Integer, nullable=True)
-    tts_cost = Column(Float, nullable=True)
-    total_cost = Column(Float, nullable=True)
+    llm_input_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    llm_output_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    llm_total_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    llm_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tts_characters: Mapped[int | None] = mapped_column(nullable=True)
+    tts_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=now_utc)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
 
     # Relationship to newsletter
     newsletter = relationship("Newsletter", backref="episodes")

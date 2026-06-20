@@ -9,8 +9,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from src.lib.database import Base
 from src.lib.utils import count_words, generate_content_hash, generate_uuid, now_utc
@@ -40,37 +41,39 @@ class Newsletter(Base):
     __tablename__ = "newsletters"
 
     # Primary key
-    id = Column(String(36), primary_key=True, default=generate_uuid)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
 
     # Content fields
-    title = Column(String(500), nullable=False, index=True)
-    url = Column(String(2048), nullable=True)
-    content = Column(Text, nullable=False)
-    extracted_content = Column(Text, nullable=True)
+    title: Mapped[str] = mapped_column(String(500), index=True)
+    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    content: Mapped[str] = mapped_column(Text)
+    extracted_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Metadata fields
-    publication_date = Column(DateTime(timezone=True), nullable=True)
-    submitted_at = Column(DateTime(timezone=True), nullable=False, default=now_utc)
-    content_hash = Column(String(64), nullable=False, unique=True, index=True)
-    word_count = Column(Integer, nullable=False, default=0)
+    publication_date: Mapped[datetime | None] = mapped_column(nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(default=now_utc)
+    content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    word_count: Mapped[int] = mapped_column(default=0)
 
     # Newsletter profile fields
-    newsletter_profile_id = Column(String(100), nullable=True, index=True)  # e.g., "the-batch"
-    issue_number = Column(String(50), nullable=True)  # e.g., "323"
-    slug = Column(String(100), nullable=True)  # e.g., "the-batch"
+    newsletter_profile_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )
+    issue_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    slug: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Link to generated episode
-    episode_id = Column(String(36), nullable=True)
+    episode_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     # Processing status
-    status = Column(
-        SQLEnum(NewsletterStatus), nullable=False, default=NewsletterStatus.PENDING, index=True
+    status: Mapped[NewsletterStatus] = mapped_column(
+        SQLEnum(NewsletterStatus), default=NewsletterStatus.PENDING, index=True
     )
-    error_message = Column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=now_utc)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize Newsletter instance."""

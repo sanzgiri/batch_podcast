@@ -121,7 +121,7 @@ class MP3Tagger:
             return
 
         # Clear existing frames we're about to set so re-tagging is clean.
-        for frame_id in (
+        for frame_id in (  # type: ignore[unreachable]
             "TIT2",
             "TPE1",
             "TALB",

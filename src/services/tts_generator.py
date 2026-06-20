@@ -18,9 +18,9 @@ import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.lib.config import Config
 from src.lib.exceptions import ServiceError, TTSError, ValidationError
@@ -46,7 +46,7 @@ from src.lib.utils import ensure_directory, generate_uuid, get_audio_duration, g
 logger = get_logger(__name__)
 
 
-class TTSProvider(str, Enum):
+class TTSProvider(StrEnum):
     """Supported TTS providers."""
 
     KOKORO_TTS = "kokoro_tts"
@@ -60,23 +60,23 @@ class TTSRequest:
     """
 
     text: str
-    voice: Optional[str] = None              # primary voice spec, e.g. "af_heart" or "af_heart:0.7,af_nicole:0.3"
-    quote_voice: Optional[str] = None        # secondary voice for blockquotes ("none" disables)
-    voice_a: Optional[str] = None            # dialogue mode: first speaker
-    voice_b: Optional[str] = None            # dialogue mode: second speaker
+    voice: str | None = None  # primary voice spec, e.g. "af_heart" or "af_heart:0.7,af_nicole:0.3"
+    quote_voice: str | None = None  # secondary voice for blockquotes ("none" disables)
+    voice_a: str | None = None  # dialogue mode: first speaker
+    voice_b: str | None = None  # dialogue mode: second speaker
     speed: float = 1.0
     quote_speed: float = 0.85
     dialogue_speed: float = 0.95
-    pitch: float = 1.0                       # accepted for API compatibility; Kokoro doesn't use it
-    output_format: str = "mp3"               # mp3 or wav
-    quality: str = "standard"                # standard or high
-    mode: str = "text"                       # text | dialogue
-    preset: Optional[str] = None             # name of bundled preset (overrides voice fields if their defaults)
-    pronunciations: Optional[str] = None     # name of bundled dict OR file path
+    pitch: float = 1.0  # accepted for API compatibility; Kokoro doesn't use it
+    output_format: str = "mp3"  # mp3 or wav
+    quality: str = "standard"  # standard or high
+    mode: str = "text"  # text | dialogue
+    preset: str | None = None  # name of bundled preset (overrides voice fields if their defaults)
+    pronunciations: str | None = None  # name of bundled dict OR file path
     expand_abbrev: bool = True
-    target_lufs: float = -16.0               # -16 podcast / -18 audiobook
-    output_path: Optional[str] = None        # full output file path (overrides auto-naming)
-    extra_pronunciations: Dict[str, str] = field(default_factory=dict)
+    target_lufs: float = -16.0  # -16 podcast / -18 audiobook
+    output_path: str | None = None  # full output file path (overrides auto-naming)
+    extra_pronunciations: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -90,7 +90,7 @@ class TTSResponse:
     voice: str
     processing_time: float
     format: str
-    characters: int = 0                      # for cost tracking
+    characters: int = 0  # for cost tracking
     mode: str = "text"
 
 
@@ -118,9 +118,16 @@ class KokoroTTSClient(BaseTTSClient):
 
     # Curated set; Kokoro ships a few dozen, these are the ones used by presets.
     KNOWN_VOICES = [
-        "af_heart", "af_bella", "af_nicole", "af_sarah", "af_kore",
-        "am_michael", "am_adam", "am_fenrir",
-        "bm_george", "bm_fable",
+        "af_heart",
+        "af_bella",
+        "af_nicole",
+        "af_sarah",
+        "af_kore",
+        "am_michael",
+        "am_adam",
+        "am_fenrir",
+        "bm_george",
+        "bm_fable",
     ]
 
     def __init__(self, config: Config, output_dir: str):
@@ -130,7 +137,7 @@ class KokoroTTSClient(BaseTTSClient):
         self.default_speed = config.tts.kokoro_tts.speed
         self.output_dir = Path(output_dir)
 
-        self.pipeline: Optional[Any] = None
+        self.pipeline: Any | None = None
         self.sample_rate = SAMPLE_RATE
 
     async def __aenter__(self) -> "KokoroTTSClient":
@@ -157,9 +164,7 @@ class KokoroTTSClient(BaseTTSClient):
             self.pipeline = KPipeline(lang_code=self.default_lang_code)
         except TypeError:
             self.pipeline = KPipeline()
-        logger.info(
-            f"Kokoro pipeline initialized (lang_code={self.default_lang_code})"
-        )
+        logger.info(f"Kokoro pipeline initialized (lang_code={self.default_lang_code})")
 
     # ------------------------------------------------------------------ public
 
@@ -295,8 +300,12 @@ class KokoroTTSClient(BaseTTSClient):
         all_blocks = [b for ch in chapters for b in ch.blocks]
         if not all_blocks:
             raise TTSError("No renderable content after parsing")
-        n_para = sum(1 for b in all_blocks if b.kind in {"para", "turn", "quote", "heading", "list"})
-        logger.info(f"[parse] mode={request.mode}  blocks: {len(all_blocks)}  speech_units: {n_para}")
+        n_para = sum(
+            1 for b in all_blocks if b.kind in {"para", "turn", "quote", "heading", "list"}
+        )
+        logger.info(
+            f"[parse] mode={request.mode}  blocks: {len(all_blocks)}  speech_units: {n_para}"
+        )
 
         # 4. Load voices
         voices = self._build_voices(request)
@@ -334,9 +343,7 @@ class KokoroTTSClient(BaseTTSClient):
             elif request.output_format == "mp3":
                 encode_mp3(norm_wav, output_path)
             else:
-                raise ValidationError(
-                    f"Unsupported output format: {request.output_format}"
-                )
+                raise ValidationError(f"Unsupported output format: {request.output_format}")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -368,7 +375,7 @@ class KokoroTTSClient(BaseTTSClient):
 class TTSGenerator:
     """Main Text-to-Speech Generator with provider abstraction."""
 
-    def __init__(self, config: Config, output_dir: Optional[str] = None):
+    def __init__(self, config: Config, output_dir: str | None = None):
         self.config = config
         try:
             self.provider = TTSProvider(config.tts.provider)
@@ -402,24 +409,24 @@ class TTSGenerator:
     async def generate_speech(
         self,
         text: str,
-        voice: Optional[str] = None,
+        voice: str | None = None,
         speed: float = 1.0,
         pitch: float = 1.0,
         output_format: str = "mp3",
         quality: str = "standard",
         # New text2audio-aware parameters:
         mode: str = "text",
-        preset: Optional[str] = None,
-        quote_voice: Optional[str] = None,
-        voice_a: Optional[str] = None,
-        voice_b: Optional[str] = None,
+        preset: str | None = None,
+        quote_voice: str | None = None,
+        voice_a: str | None = None,
+        voice_b: str | None = None,
         quote_speed: float = 0.85,
         dialogue_speed: float = 0.95,
-        pronunciations: Optional[str] = None,
-        extra_pronunciations: Optional[Dict[str, str]] = None,
+        pronunciations: str | None = None,
+        extra_pronunciations: dict[str, str] | None = None,
         expand_abbrev: bool = True,
         target_lufs: float = -16.0,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
     ) -> TTSResponse:
         """Generate speech from text. See TTSRequest for parameter docs."""
         if not text or not text.strip():
@@ -485,8 +492,8 @@ class TTSGenerator:
     def get_available_pronunciation_dicts(self) -> list[str]:
         return list_pronunciation_dicts()
 
-    def get_provider_info(self) -> Dict[str, Any]:
-        info: Dict[str, Any] = {
+    def get_provider_info(self) -> dict[str, Any]:
+        info: dict[str, Any] = {
             "provider": str(self.provider),
             "available_voices": self.get_available_voices(),
             "available_presets": self.get_available_presets(),

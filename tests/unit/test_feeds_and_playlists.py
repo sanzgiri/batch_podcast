@@ -9,7 +9,6 @@ from src.lib.newsletter_config import PodcastMetadata
 from src.lib.playlist_generator import PlaylistEntry, PlaylistGenerator
 from src.lib.podcast_feed import FeedEpisode, PodcastFeedGenerator
 
-
 # ---------------------------------------------------------------------------
 # PlaylistGenerator
 # ---------------------------------------------------------------------------
@@ -37,7 +36,9 @@ class TestPlaylistGenerator:
         playlist_dir = tmp_path / "playlists"
         playlist_dir.mkdir()
         entry = PlaylistEntry(
-            audio_path=audio_dir / "ep1.mp3", title="Ep1", duration_seconds=60,
+            audio_path=audio_dir / "ep1.mp3",
+            title="Ep1",
+            duration_seconds=60,
         )
         out = playlist_dir / "p.m3u8"
         PlaylistGenerator.write([entry], out, relative_to=playlist_dir)
@@ -54,7 +55,9 @@ class TestPlaylistGenerator:
 
     def test_unicode_title_in_m3u8(self, tmp_path: Path):
         e = PlaylistEntry(
-            audio_path=tmp_path / "x.mp3", title="\u00e9pisode caf\u00e9 \u2014 1", duration_seconds=60,
+            audio_path=tmp_path / "x.mp3",
+            title="\u00e9pisode caf\u00e9 \u2014 1",
+            duration_seconds=60,
         )
         out = tmp_path / "p.m3u8"
         PlaylistGenerator.write([e], out, format="m3u8")
@@ -63,7 +66,9 @@ class TestPlaylistGenerator:
 
     def test_m3u_format_strips_non_ascii(self, tmp_path: Path):
         e = PlaylistEntry(
-            audio_path=tmp_path / "x.mp3", title="\u00e9pisode caf\u00e9", duration_seconds=60,
+            audio_path=tmp_path / "x.mp3",
+            title="\u00e9pisode caf\u00e9",
+            duration_seconds=60,
         )
         out = tmp_path / "p.m3u"
         PlaylistGenerator.write([e], out, format="m3u")
@@ -138,18 +143,22 @@ class TestPodcastFeedGenerator:
 
     def test_sorts_episodes_newest_first(self, tmp_path: Path, podcast):
         ep_old = FeedEpisode(
-            title="Old", description="x",
+            title="Old",
+            description="x",
             audio_file_path=tmp_path / "old.mp3",
             duration_seconds=60,
             publication_date=datetime(2025, 1, 1),
-            guid="old", file_size_bytes=1,
+            guid="old",
+            file_size_bytes=1,
         )
         ep_new = FeedEpisode(
-            title="New", description="x",
+            title="New",
+            description="x",
             audio_file_path=tmp_path / "new.mp3",
             duration_seconds=60,
             publication_date=datetime(2026, 6, 1),
-            guid="new", file_size_bytes=1,
+            guid="new",
+            file_size_bytes=1,
         )
         # Pass in old, new order; output should be new, old
         out = tmp_path / "feed.xml"
@@ -164,7 +173,10 @@ class TestPodcastFeedGenerator:
     def test_enclosure_with_base_url(self, tmp_path: Path, podcast, episode):
         out = tmp_path / "feed.xml"
         PodcastFeedGenerator().write_feed(
-            podcast, [episode], out, base_url="https://podcasts.example.com",
+            podcast,
+            [episode],
+            out,
+            base_url="https://podcasts.example.com",
         )
         content = out.read_text(encoding="utf-8")
         # Episode audio file is at tmp_path/ep1.mp3, feed is at tmp_path/feed.xml,

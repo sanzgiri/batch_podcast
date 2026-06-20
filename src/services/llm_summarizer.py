@@ -7,24 +7,25 @@ using Large Language Models (OpenAI GPT or Ollama local models).
 
 import json
 import re
+import time
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
+from typing import Any
 
 import aiohttp
 
 from src.lib.config import Config
+from src.lib.exceptions import LLMError, ServiceError, ValidationError
 from src.lib.logging import get_logger
-from src.lib.exceptions import LLMError, ValidationError, ServiceError
-from src.lib.utils import clean_text, truncate_text
-
+from src.lib.utils import clean_text
 
 logger = get_logger(__name__)
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     """Supported LLM providers."""
+
     OPENAI = "openai"
     OLLAMA = "ollama"
 
@@ -102,7 +103,7 @@ def _build_system_prompt(mode: str) -> str:
     return _MONOLOGUE_SYSTEM_PROMPT
 
 
-def _recover_truncated_json(raw: str) -> Optional[dict]:
+def _recover_truncated_json(raw: str) -> dict | None:
     """Best-effort recovery from a truncated/malformed JSON LLM response.
 
     Local models sometimes hit num_predict mid-string. The dialogue inside
@@ -131,7 +132,7 @@ def _recover_truncated_json(raw: str) -> Optional[dict]:
     try:
         summary = json.loads(f'"{m_summary.group(1)}"')
     except json.JSONDecodeError:
-        summary = m_summary.group(1).replace('\\n', '\n').replace('\\"', '"')
+        summary = m_summary.group(1).replace("\\n", "\n").replace('\\"', '"')
 
     if not summary or not summary.strip():
         return None
@@ -209,7 +210,7 @@ def _build_user_prompt(request: "SummaryRequest") -> str:
             "- Close with the Host wrapping up and thanking the Guest.",
             "",
             "Voice rules — this will be read by a TTS system:",
-            "- Spell numbers in words when they're short (\"three things\" not \"3 things\").",
+            '- Spell numbers in words when they\'re short ("three things" not "3 things").',
             "- Use em-dashes (—) for natural mid-sentence pauses.",
             "- Avoid bracketed stage directions like (laughs) or (thoughtful pause) — they get read aloud.",
             "- Avoid markdown formatting (no **bold**, no bullet lists, no headings).",
@@ -262,11 +263,12 @@ def _build_user_prompt(request: "SummaryRequest") -> str:
 @dataclass
 class SummaryRequest:
     """Request for content summarization."""
+
     content: str
-    title: Optional[str] = None
+    title: str | None = None
     style: str = "conversational"  # conversational, formal, casual
     target_length: str = "medium"  # short, medium, long
-    focus_areas: List[str] = None
+    focus_areas: list[str] = None
     mode: str = "monologue"  # monologue (single narrator) or dialogue (two hosts)
     host_a_name: str = "Host"
     host_b_name: str = "Guest"
@@ -279,9 +281,10 @@ class SummaryRequest:
 @dataclass
 class SummaryResponse:
     """Response from summarization."""
+
     summary: str
     title: str
-    key_points: List[str]
+    key_points: list[str]
     word_count: int
     estimated_duration_seconds: int
     provider: str
@@ -296,12 +299,12 @@ class SummaryResponse:
 
 class BaseLLMClient(ABC):
     """Abstract base class for LLM clients."""
-    
+
     @abstractmethod
     async def summarize(self, request: SummaryRequest) -> SummaryResponse:
         """Summarize content using the LLM."""
         pass
-    
+
     @abstractmethod
     async def health_check(self) -> bool:
         """Check if the LLM service is available."""
@@ -310,7 +313,7 @@ class BaseLLMClient(ABC):
 
 class OpenAIClient(BaseLLMClient):
     """OpenAI GPT client implementation."""
-    
+
     def __init__(self, config: Config):
         self.config = config
         self.api_key = config.llm.openai.api_key
@@ -318,60 +321,61 @@ class OpenAIClient(BaseLLMClient):
         self.base_url = config.llm.openai.base_url
         self.max_tokens = config.llm.openai.max_tokens
         self.temperature = config.llm.openai.temperature
-        
+
         if not self.api_key:
             raise ValidationError("OpenAI API key is required")
-        
-        self.session: Optional[aiohttp.ClientSession] = None
-    
+
+        self.session: aiohttp.ClientSession | None = None
+
     async def __aenter__(self):
         """Async context manager entry."""
         self.session = aiohttp.ClientSession(
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            },
-            timeout=aiohttp.ClientTimeout(total=60)
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+            timeout=aiohttp.ClientTimeout(total=60),
         )
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         if self.session:
             await self.session.close()
-    
+
     async def summarize(self, request: SummaryRequest) -> SummaryResponse:
         """Summarize content using OpenAI GPT."""
         if not self.session:
             raise ServiceError("OpenAI client must be used as async context manager")
-        
+
         logger.info(f"Summarizing content with OpenAI {self.model}")
         start_time = time.time()
-        
+
         try:
             # Build the prompt
             prompt = self._build_prompt(request)
-            
+
             # Make API request
             payload = {
                 "model": self.model,
                 "messages": [
                     {"role": "system", "content": self._get_system_prompt()},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 "max_tokens": self.max_tokens,
                 "temperature": self.temperature,
-                "response_format": {"type": "json_object"}
+                "response_format": {"type": "json_object"},
             }
-            
-            async with self.session.post(f"{self.base_url}/chat/completions", json=payload) as response:
+
+            async with self.session.post(
+                f"{self.base_url}/chat/completions", json=payload
+            ) as response:
                 response.raise_for_status()
                 result = await response.json()
-                
+
                 # Parse response
                 content = result["choices"][0]["message"]["content"]
                 parsed = json.loads(content)
-                parsed = _normalize_parsed_response(parsed, fallback_title=request.title or "Untitled Episode")
+                parsed = _normalize_parsed_response(
+                    parsed, fallback_title=request.title or "Untitled Episode"
+                )
 
                 processing_time = time.time() - start_time
 
@@ -387,11 +391,12 @@ class OpenAIClient(BaseLLMClient):
 
                 # Calculate cost using cost tracker
                 from src.lib.cost_tracker import LLMUsage
+
                 llm_usage = LLMUsage.calculate(
                     provider="openai",
                     model=self.model,
                     input_tokens=input_tokens,
-                    output_tokens=output_tokens
+                    output_tokens=output_tokens,
                 )
 
                 return SummaryResponse(
@@ -406,37 +411,39 @@ class OpenAIClient(BaseLLMClient):
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     total_tokens=total_tokens,
-                    cost=llm_usage.total_cost
+                    cost=llm_usage.total_cost,
                 )
-                
+
         except aiohttp.ClientError as e:
             logger.error(f"OpenAI API request failed: {e}")
-            raise LLMError(f"OpenAI API request failed: {e}")
+            raise LLMError(f"OpenAI API request failed: {e}") from e
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse OpenAI response: {e}")
-            raise LLMError(f"Invalid response format from OpenAI: {e}")
+            raise LLMError(f"Invalid response format from OpenAI: {e}") from e
         except Exception as e:
             logger.error(f"Unexpected error in OpenAI summarization: {e}")
-            raise LLMError(f"OpenAI summarization failed: {e}")
-    
+            raise LLMError(f"OpenAI summarization failed: {e}") from e
+
     async def health_check(self) -> bool:
         """Check OpenAI API availability."""
         if not self.session:
             return False
-        
+
         try:
             payload = {
                 "model": self.model,
                 "messages": [{"role": "user", "content": "Test"}],
-                "max_tokens": 1
+                "max_tokens": 1,
             }
-            
-            async with self.session.post(f"{self.base_url}/chat/completions", json=payload) as response:
+
+            async with self.session.post(
+                f"{self.base_url}/chat/completions", json=payload
+            ) as response:
                 return response.status == 200
-                
+
         except Exception:
             return False
-    
+
     def _get_system_prompt(self) -> str:
         """Get the system prompt for summarization."""
         return _build_system_prompt("monologue")
@@ -448,7 +455,7 @@ class OpenAIClient(BaseLLMClient):
 
 class OllamaClient(BaseLLMClient):
     """Ollama local LLM client implementation."""
-    
+
     def __init__(self, config: Config):
         self.config = config
         self.base_url = config.llm.ollama.base_url
@@ -457,33 +464,31 @@ class OllamaClient(BaseLLMClient):
         self.num_ctx = config.llm.ollama.num_ctx
         self.num_predict = config.llm.ollama.num_predict
         self.timeout = config.llm.ollama.timeout
-        
-        self.session: Optional[aiohttp.ClientSession] = None
-    
+
+        self.session: aiohttp.ClientSession | None = None
+
     async def __aenter__(self):
         """Async context manager entry."""
-        self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=self.timeout)
-        )
+        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout))
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         if self.session:
             await self.session.close()
-    
+
     async def summarize(self, request: SummaryRequest) -> SummaryResponse:
         """Summarize content using Ollama."""
         if not self.session:
             raise ServiceError("Ollama client must be used as async context manager")
-        
+
         logger.info(f"Summarizing content with Ollama {self.model}")
         start_time = time.time()
-        
+
         try:
             # Build the prompt
             prompt = self._build_full_prompt(request)
-            
+
             # Make API request
             payload = {
                 "model": self.model,
@@ -494,13 +499,13 @@ class OllamaClient(BaseLLMClient):
                     "num_ctx": self.num_ctx,
                     "num_predict": self.num_predict,
                 },
-                "format": "json"
+                "format": "json",
             }
-            
+
             async with self.session.post(f"{self.base_url}/api/generate", json=payload) as response:
                 response.raise_for_status()
                 result = await response.json()
-                
+
                 # Parse response — with recovery for truncated JSON.
                 content = result["response"]
                 try:
@@ -519,7 +524,9 @@ class OllamaClient(BaseLLMClient):
                         f"Consider raising num_predict in config."
                     )
                     parsed = recovered
-                parsed = _normalize_parsed_response(parsed, fallback_title=request.title or "Untitled Episode")
+                parsed = _normalize_parsed_response(
+                    parsed, fallback_title=request.title or "Untitled Episode"
+                )
 
                 processing_time = time.time() - start_time
 
@@ -534,11 +541,12 @@ class OllamaClient(BaseLLMClient):
 
                 # Local models have zero cost
                 from src.lib.cost_tracker import LLMUsage
+
                 llm_usage = LLMUsage.calculate(
                     provider="ollama",
                     model=self.model,
                     input_tokens=input_tokens,
-                    output_tokens=output_tokens
+                    output_tokens=output_tokens,
                 )
 
                 return SummaryResponse(
@@ -553,31 +561,31 @@ class OllamaClient(BaseLLMClient):
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     total_tokens=total_tokens,
-                    cost=llm_usage.total_cost  # Will be 0.0 for local
+                    cost=llm_usage.total_cost,  # Will be 0.0 for local
                 )
-                
+
         except aiohttp.ClientError as e:
             logger.error(f"Ollama API request failed: {e}")
-            raise LLMError(f"Ollama API request failed: {e}")
+            raise LLMError(f"Ollama API request failed: {e}") from e
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse Ollama response: {e}")
-            raise LLMError(f"Invalid response format from Ollama: {e}")
+            raise LLMError(f"Invalid response format from Ollama: {e}") from e
         except Exception as e:
             logger.error(f"Unexpected error in Ollama summarization: {e}")
-            raise LLMError(f"Ollama summarization failed: {e}")
-    
+            raise LLMError(f"Ollama summarization failed: {e}") from e
+
     async def health_check(self) -> bool:
         """Check Ollama service availability."""
         if not self.session:
             return False
-        
+
         try:
             async with self.session.get(f"{self.base_url}/api/tags") as response:
                 return response.status == 200
-                
+
         except Exception:
             return False
-    
+
     def _build_full_prompt(self, request: SummaryRequest) -> str:
         """Build the complete prompt for Ollama (includes system message)."""
         system_prompt = _build_system_prompt(request.mode)
@@ -592,15 +600,15 @@ class OllamaClient(BaseLLMClient):
 class LLMSummarizer:
     """
     Main LLM Summarizer service with provider abstraction.
-    
+
     Handles provider selection, fallback logic, and response processing.
     """
-    
+
     def __init__(self, config: Config):
         """Initialize LLM Summarizer with configuration."""
         self.config = config
         self.provider = LLMProvider(config.llm.provider)
-        
+
         # Initialize client based on provider
         if self.provider == LLMProvider.OPENAI:
             self.client = OpenAIClient(config)
@@ -608,30 +616,30 @@ class LLMSummarizer:
             self.client = OllamaClient(config)
         else:
             raise ValidationError(f"Unsupported LLM provider: {self.provider}")
-        
+
         logger.info(f"Initialized LLM Summarizer with provider: {self.provider}")
-    
+
     async def __aenter__(self):
         """Async context manager entry."""
         await self.client.__aenter__()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.client.__aexit__(exc_type, exc_val, exc_tb)
-    
+
     async def summarize_newsletter(
         self,
         content: str,
-        title: Optional[str] = None,
+        title: str | None = None,
         style: str = "conversational",
         target_length: str = "medium",
-        focus_areas: Optional[List[str]] = None,
+        focus_areas: list[str] | None = None,
         mode: str = "monologue",
     ) -> SummaryResponse:
         """
         Main method to summarize newsletter content.
-        
+
         Args:
             content: Newsletter content to summarize
             title: Optional original title
@@ -639,31 +647,31 @@ class LLMSummarizer:
             target_length: Target length (short, medium, long)
             focus_areas: Optional list of topics to emphasize
             mode: Script mode - 'monologue' (single narrator) or 'dialogue' (Host/Guest)
-            
+
         Returns:
             SummaryResponse with generated summary and metadata
-            
+
         Raises:
             LLMError: If summarization fails
             ValidationError: If input is invalid
         """
         if not content or not content.strip():
             raise ValidationError("Content cannot be empty")
-        
+
         if mode not in {"monologue", "dialogue"}:
             raise ValidationError("mode must be 'monologue' or 'dialogue'")
 
         # Clean and validate content
         content = clean_text(content)
-        
+
         if len(content.split()) < 50:
             raise ValidationError("Content too short for meaningful summarization")
-        
+
         logger.info(
             f"Starting summarization: {len(content.split())} words, "
             f"style: {style}, length: {target_length}, mode: {mode}"
         )
-        
+
         request = SummaryRequest(
             content=content,
             title=title,
@@ -672,22 +680,22 @@ class LLMSummarizer:
             focus_areas=focus_areas or [],
             mode=mode,
         )
-        
+
         try:
             response = await self.client.summarize(request)
-            
+
             logger.info(
                 f"Summarization completed: {response.word_count} words, "
                 f"{response.estimated_duration_seconds}s duration, "
                 f"processed in {response.processing_time:.2f}s"
             )
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"Summarization failed: {e}")
             raise
-    
+
     async def health_check(self) -> bool:
         """Check if the LLM service is available."""
         try:
@@ -695,24 +703,20 @@ class LLMSummarizer:
         except Exception as e:
             logger.error(f"LLM health check failed: {e}")
             return False
-    
-    def get_provider_info(self) -> Dict[str, Any]:
+
+    def get_provider_info(self) -> dict[str, Any]:
         """Get information about the current provider."""
         if self.provider == LLMProvider.OPENAI:
             return {
                 "provider": "openai",
                 "model": self.client.model,
-                "base_url": self.client.base_url
+                "base_url": self.client.base_url,
             }
         elif self.provider == LLMProvider.OLLAMA:
             return {
-                "provider": "ollama", 
+                "provider": "ollama",
                 "model": self.client.model,
-                "base_url": self.client.base_url
+                "base_url": self.client.base_url,
             }
         else:
             return {"provider": str(self.provider)}
-
-
-# Add missing import
-import time

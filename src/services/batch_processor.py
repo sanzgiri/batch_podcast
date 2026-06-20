@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 from src.lib.config import Config
 from src.lib.episode_tracker import EpisodeTracker
@@ -31,9 +30,9 @@ class BatchCandidate:
     """A single newsletter episode that has been discovered for processing."""
 
     url: str
-    title: Optional[str] = None
-    published_date: Optional[datetime] = None
-    issue_number: Optional[int] = None
+    title: str | None = None
+    published_date: datetime | None = None
+    issue_number: int | None = None
     source: str = "unknown"  # 'rss' or 'enumeration'
 
 
@@ -77,11 +76,11 @@ class BatchProcessor:
     async def run(
         self,
         profile_id: str,
-        latest: Optional[int] = None,
-        all_unprocessed: bool = False,
-        from_date: Optional[datetime] = None,
-        to_date: Optional[datetime] = None,
-        start_issue: Optional[int] = None,
+        latest: int | None = None,
+        _all_unprocessed: bool = False,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
+        start_issue: int | None = None,
         dry_run: bool = False,
     ) -> BatchResult:
         """Discover and process episodes for the given newsletter profile.
@@ -171,9 +170,9 @@ class BatchProcessor:
         self,
         profile: NewsletterProfile,
         profile_id: str,
-        from_date: Optional[datetime],
-        to_date: Optional[datetime],
-        start_issue: Optional[int],
+        from_date: datetime | None,
+        to_date: datetime | None,
+        start_issue: int | None,
     ) -> list[BatchCandidate]:
         """Discover candidates via RSS (preferred) or URL-pattern enumeration."""
         candidates: list[BatchCandidate] = []
@@ -207,7 +206,9 @@ class BatchProcessor:
             for issue_n, url in discovered:
                 candidates.append(
                     BatchCandidate(
-                        url=url, issue_number=issue_n, source="enumeration",
+                        url=url,
+                        issue_number=issue_n,
+                        source="enumeration",
                     )
                 )
             logger.info(
@@ -247,8 +248,6 @@ class BatchProcessor:
                 continue
             # If we've already got this URL, keep the more-metadata-rich one
             existing = seen[c.url]
-            if not existing.title and c.title:
-                seen[c.url] = c
-            elif not existing.published_date and c.published_date:
+            if not existing.title and c.title or not existing.published_date and c.published_date:
                 seen[c.url] = c
         return list(seen.values())

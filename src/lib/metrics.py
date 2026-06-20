@@ -1,10 +1,9 @@
 """Simple in-memory metrics for Newsletter Podcast Generator."""
 
 from collections import defaultdict
-from typing import Dict
 
-_counters: Dict[str, int] = defaultdict(int)
-_timings: Dict[str, list[float]] = defaultdict(list)
+_counters: dict[str, int] = defaultdict(int)
+_timings: dict[str, list[float]] = defaultdict(list)
 
 
 def increment_counter(name: str) -> None:

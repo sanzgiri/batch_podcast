@@ -7,7 +7,7 @@ local Ollama models (which sometimes omit or rename fields).
 import pytest
 
 from src.lib.exceptions import LLMError
-from src.services.llm_summarizer import _normalize_parsed_response
+from src.services.llm_summarizer import _normalize_parsed_response, _recover_truncated_json
 
 
 class TestNormalizeParsedResponse:
@@ -117,9 +117,6 @@ class TestNormalizeParsedResponse:
         assert result["summary"] == "real summary"
 
 
-from src.services.llm_summarizer import _recover_truncated_json
-
-
 class TestRecoverTruncatedJson:
     """_recover_truncated_json must salvage usable content from broken LLM JSON."""
 
@@ -172,7 +169,7 @@ class TestRecoverTruncatedJson:
         raw = '{"summary": "Host: She said \\"hello\\" politely."}'
         result = _recover_truncated_json(raw)
         assert result is not None
-        assert 'hello' in result["summary"]
+        assert "hello" in result["summary"]
 
     def test_handles_unicode_in_summary(self):
         raw = '{"summary": "Host: caf\u00e9 r\u00e9sum\u00e9 na\u00efve."}'

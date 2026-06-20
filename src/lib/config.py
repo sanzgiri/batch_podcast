@@ -4,11 +4,9 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field
-
 
 # --- Sub-config models matching what the code accesses ---
 
@@ -26,8 +24,8 @@ class OllamaConfig(BaseModel):
     model: str = "llama2"
     temperature: float = 0.7
     timeout: int = 300
-    num_ctx: int = 8192       # context window (input + output tokens)
-    num_predict: int = 4096   # max output tokens before truncation
+    num_ctx: int = 8192  # context window (input + output tokens)
+    num_predict: int = 4096  # max output tokens before truncation
 
 
 class LLMConfig(BaseModel):
@@ -103,9 +101,11 @@ class Config(BaseModel):
 
 def _substitute_env_vars(value: str) -> str:
     """Replace ${VAR} patterns with environment variable values."""
+
     def replacer(match: re.Match) -> str:
         var_name = match.group(1)
         return os.environ.get(var_name, "")
+
     return re.sub(r"\$\{(\w+)\}", replacer, value)
 
 

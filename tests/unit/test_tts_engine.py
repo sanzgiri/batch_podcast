@@ -1,7 +1,6 @@
 """Unit tests for src.lib.tts_engine — text2audio-derived pipeline."""
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -21,7 +20,6 @@ from src.lib.tts_engine import (
     silence,
 )
 from src.lib.tts_engine.rendering import SAMPLE_RATE
-
 
 # ---------------------------------------------------------------------------
 # Text preprocessing
@@ -152,9 +150,7 @@ class TestParseText:
     def test_drops_code_fences(self):
         text = "Before.\n\n```\ncode here\n```\n\nAfter."
         chapters = parse_text(text)
-        para_text = " ".join(
-            b.text for b in chapters[0].blocks if b.kind == "para"
-        )
+        para_text = " ".join(b.text for b in chapters[0].blocks if b.kind == "para")
         assert "code here" not in para_text
 
 

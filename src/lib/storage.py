@@ -4,14 +4,12 @@ Storage utilities for organizing audio files.
 Handles smart file organization based on newsletter profiles.
 """
 
-import os
-from pathlib import Path
-from typing import Optional
 from datetime import datetime
+from pathlib import Path
 
 from src.lib.config import Config
-from src.lib.newsletter_config import NewsletterProfile
 from src.lib.logging import get_logger
+from src.lib.newsletter_config import NewsletterProfile
 from src.lib.utils import generate_uuid
 
 logger = get_logger(__name__)
@@ -31,10 +29,7 @@ class StorageManager:
         self.base_audio_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Ensured base directory exists: {self.base_audio_dir}")
 
-    def get_output_directory(
-        self,
-        newsletter_profile: Optional[NewsletterProfile] = None
-    ) -> Path:
+    def get_output_directory(self, newsletter_profile: NewsletterProfile | None = None) -> Path:
         """
         Get output directory for audio files.
 
@@ -59,12 +54,12 @@ class StorageManager:
 
     def generate_filename(
         self,
-        newsletter_profile: Optional[NewsletterProfile] = None,
-        newsletter_id: Optional[str] = None,
-        slug: Optional[str] = None,
-        issue_number: Optional[str] = None,
-        title: Optional[str] = None,
-        date: Optional[str] = None,
+        newsletter_profile: NewsletterProfile | None = None,
+        newsletter_id: str | None = None,
+        slug: str | None = None,
+        issue_number: str | None = None,
+        title: str | None = None,
+        date: str | None = None,
     ) -> str:
         """
         Generate filename for audio file.
@@ -101,12 +96,12 @@ class StorageManager:
 
     def get_audio_file_path(
         self,
-        newsletter_profile: Optional[NewsletterProfile] = None,
-        newsletter_id: Optional[str] = None,
-        slug: Optional[str] = None,
-        issue_number: Optional[str] = None,
-        title: Optional[str] = None,
-        date: Optional[str] = None,
+        newsletter_profile: NewsletterProfile | None = None,
+        newsletter_id: str | None = None,
+        slug: str | None = None,
+        issue_number: str | None = None,
+        title: str | None = None,
+        date: str | None = None,
     ) -> Path:
         """
         Get complete path for audio file.
@@ -154,10 +149,7 @@ class StorageManager:
             # If not relative to cwd, return absolute path
             return str(absolute_path)
 
-    def list_audio_files(
-        self,
-        newsletter_profile: Optional[NewsletterProfile] = None
-    ) -> list[Path]:
+    def list_audio_files(self, newsletter_profile: NewsletterProfile | None = None) -> list[Path]:
         """
         List audio files in directory.
 
@@ -176,9 +168,7 @@ class StorageManager:
         return sorted(audio_files, key=lambda p: p.stat().st_mtime, reverse=True)
 
     def cleanup_old_files(
-        self,
-        days: int = 7,
-        newsletter_profile: Optional[NewsletterProfile] = None
+        self, days: int = 7, newsletter_profile: NewsletterProfile | None = None
     ) -> int:
         """
         Clean up old audio files.
@@ -207,7 +197,7 @@ class StorageManager:
         logger.info(f"Cleaned up {deleted_count} old audio files")
         return deleted_count
 
-    def get_storage_stats(self, newsletter_profile: Optional[NewsletterProfile] = None) -> dict:
+    def get_storage_stats(self, newsletter_profile: NewsletterProfile | None = None) -> dict:
         """
         Get storage statistics.
 

@@ -23,9 +23,7 @@ def load_preset(name: str) -> dict:
     path = PRESETS_DIR / f"{name}.json"
     if not path.is_file():
         avail = list_presets()
-        raise FileNotFoundError(
-            f"unknown preset '{name}'. available: {', '.join(avail)}"
-        )
+        raise FileNotFoundError(f"unknown preset '{name}'. available: {', '.join(avail)}")
     with open(path) as fh:
         return json.load(fh)
 
@@ -39,8 +37,7 @@ def load_pronunciations(name_or_path: str) -> dict:
         if not path.is_file():
             avail = list_pronunciation_dicts()
             raise FileNotFoundError(
-                f"no pronunciation file: '{name_or_path}'. "
-                f"available: {', '.join(avail)}"
+                f"no pronunciation file: '{name_or_path}'. available: {', '.join(avail)}"
             )
     with open(path) as fh:
         data = json.load(fh)
@@ -52,15 +49,11 @@ def list_presets() -> list[str]:
     """List available bundled preset names."""
     if not PRESETS_DIR.is_dir():
         return []
-    return sorted(
-        f.stem for f in PRESETS_DIR.iterdir() if f.suffix == ".json"
-    )
+    return sorted(f.stem for f in PRESETS_DIR.iterdir() if f.suffix == ".json")
 
 
 def list_pronunciation_dicts() -> list[str]:
     """List available bundled pronunciation dict names."""
     if not PRON_DIR.is_dir():
         return []
-    return sorted(
-        f.stem for f in PRON_DIR.iterdir() if f.suffix == ".json"
-    )
+    return sorted(f.stem for f in PRON_DIR.iterdir() if f.suffix == ".json")

@@ -5,19 +5,19 @@ Tracks token usage (LLM) and character usage (TTS) with cost calculations.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict
-from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     """LLM provider names."""
+
     OPENAI = "openai"
     OLLAMA = "ollama"
 
 
-class TTSProvider(str, Enum):
+class TTSProvider(StrEnum):
     """TTS provider names."""
+
     KOKORO_TTS = "kokoro_tts"
 
 
@@ -26,11 +26,11 @@ class TTSProvider(str, Enum):
 LLM_PRICING = {
     "openai": {
         "gpt-4o": {
-            "input": 2.50 / 1_000_000,   # $2.50 per 1M input tokens
+            "input": 2.50 / 1_000_000,  # $2.50 per 1M input tokens
             "output": 10.00 / 1_000_000,  # $10.00 per 1M output tokens
         },
         "gpt-4o-mini": {
-            "input": 0.150 / 1_000_000,   # $0.15 per 1M input tokens
+            "input": 0.150 / 1_000_000,  # $0.15 per 1M input tokens
             "output": 0.600 / 1_000_000,  # $0.60 per 1M output tokens
         },
         "gpt-4-turbo": {
@@ -48,7 +48,7 @@ LLM_PRICING = {
             "input": 0.0,
             "output": 0.0,
         }
-    }
+    },
 }
 
 TTS_PRICING = {
@@ -62,6 +62,7 @@ TTS_PRICING = {
 @dataclass
 class LLMUsage:
     """LLM usage tracking."""
+
     provider: str
     model: str
     input_tokens: int
@@ -73,11 +74,7 @@ class LLMUsage:
 
     @classmethod
     def calculate(
-        cls,
-        provider: str,
-        model: str,
-        input_tokens: int,
-        output_tokens: int
+        cls, provider: str, model: str, input_tokens: int, output_tokens: int
     ) -> "LLMUsage":
         """Calculate costs from token usage."""
         total_tokens = input_tokens + output_tokens
@@ -85,8 +82,7 @@ class LLMUsage:
         # Get pricing
         if provider in LLM_PRICING:
             model_pricing = LLM_PRICING[provider].get(
-                model,
-                LLM_PRICING[provider].get("default", {"input": 0.0, "output": 0.0})
+                model, LLM_PRICING[provider].get("default", {"input": 0.0, "output": 0.0})
             )
         else:
             model_pricing = {"input": 0.0, "output": 0.0}
@@ -103,47 +99,36 @@ class LLMUsage:
             total_tokens=total_tokens,
             input_cost=input_cost,
             output_cost=output_cost,
-            total_cost=total_cost
+            total_cost=total_cost,
         )
 
 
 @dataclass
 class TTSUsage:
     """TTS usage tracking."""
+
     provider: str
     voice: str
     characters: int
     cost: float
 
     @classmethod
-    def calculate(
-        cls,
-        provider: str,
-        voice: str,
-        characters: int
-    ) -> "TTSUsage":
+    def calculate(cls, provider: str, voice: str, characters: int) -> "TTSUsage":
         """Calculate costs from character usage."""
         # Get pricing
-        if provider in TTS_PRICING:
-            cost_per_char = TTS_PRICING[provider]["cost_per_char"]
-        else:
-            cost_per_char = 0.0
+        cost_per_char = TTS_PRICING[provider]["cost_per_char"] if provider in TTS_PRICING else 0.0
 
         cost = characters * cost_per_char
 
-        return cls(
-            provider=provider,
-            voice=voice,
-            characters=characters,
-            cost=cost
-        )
+        return cls(provider=provider, voice=voice, characters=characters, cost=cost)
 
 
 @dataclass
 class ProcessingCosts:
     """Combined processing costs for a newsletter."""
-    llm_usage: Optional[LLMUsage] = None
-    tts_usage: Optional[TTSUsage] = None
+
+    llm_usage: LLMUsage | None = None
+    tts_usage: TTSUsage | None = None
 
     @property
     def total_cost(self) -> float:
@@ -165,7 +150,7 @@ class ProcessingCosts:
         """Get TTS cost."""
         return self.tts_usage.cost if self.tts_usage else 0.0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
         result = {
             "total_cost": self.total_cost,
@@ -196,21 +181,18 @@ class ProcessingCosts:
         return result
 
 
-def get_llm_pricing_info() -> Dict:
+def get_llm_pricing_info() -> dict:
     """Get current LLM pricing information."""
     return LLM_PRICING.copy()
 
 
-def get_tts_pricing_info() -> Dict:
+def get_tts_pricing_info() -> dict:
     """Get current TTS pricing information."""
     return TTS_PRICING.copy()
 
 
 def estimate_llm_cost(
-    provider: str,
-    model: str,
-    input_text: str,
-    estimated_output_tokens: int = 1000
+    provider: str, model: str, input_text: str, estimated_output_tokens: int = 1000
 ) -> float:
     """
     Estimate LLM cost from input text.
@@ -231,16 +213,13 @@ def estimate_llm_cost(
         provider=provider,
         model=model,
         input_tokens=estimated_input_tokens,
-        output_tokens=estimated_output_tokens
+        output_tokens=estimated_output_tokens,
     )
 
     return usage.total_cost
 
 
-def estimate_tts_cost(
-    provider: str,
-    text: str
-) -> float:
+def estimate_tts_cost(provider: str, text: str) -> float:
     """
     Estimate TTS cost from text.
 
@@ -253,10 +232,6 @@ def estimate_tts_cost(
     """
     characters = len(text)
 
-    usage = TTSUsage.calculate(
-        provider=provider,
-        voice="default",
-        characters=characters
-    )
+    usage = TTSUsage.calculate(provider=provider, voice="default", characters=characters)
 
     return usage.cost

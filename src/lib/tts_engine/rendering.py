@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -38,7 +38,7 @@ def parse_voice_spec(spec: str) -> list[tuple[str, float]]:
     return [(n, w / tot) for n, w in out]
 
 
-def load_blended_voice(pipeline: Any, spec: str) -> Optional[Any]:
+def load_blended_voice(pipeline: Any, spec: str) -> Any | None:
     """Load and blend voicepacks per spec.
 
     pipeline must be a KPipeline instance with load_voice().
@@ -70,11 +70,7 @@ def render_text(pipeline: Any, text: str, voice: Any, speed: float) -> np.ndarra
     """Render a single string through Kokoro and return float32 mono samples."""
     pieces: list[np.ndarray] = []
     for _, _, audio in pipeline(text, voice=voice, speed=speed):
-        a = (
-            audio.detach().cpu().numpy()
-            if hasattr(audio, "detach")
-            else np.asarray(audio)
-        )
+        a = audio.detach().cpu().numpy() if hasattr(audio, "detach") else np.asarray(audio)
         pieces.append(a.astype(np.float32))
     return np.concatenate(pieces) if pieces else np.zeros(0, dtype=np.float32)
 

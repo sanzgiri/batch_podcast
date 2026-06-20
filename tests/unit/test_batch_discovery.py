@@ -58,6 +58,7 @@ class TestURLEnumeratorExtractIssueNumber:
 class TestRSSFeedParserFilterEntries:
     def _make_entry(self, days_ago: int, title: str = "x") -> FeedEntry:
         from datetime import timedelta
+
         return FeedEntry(
             title=title,
             url=f"https://example.com/{title}",
@@ -129,7 +130,9 @@ class TestRSSFeedParserFilterEntries:
 class TestFeedEntryBestText:
     def test_picks_longest(self):
         e = FeedEntry(
-            title="t", url="u", guid="u",
+            title="t",
+            url="u",
+            guid="u",
             summary="short summary",
             content="much much longer content body",
         )

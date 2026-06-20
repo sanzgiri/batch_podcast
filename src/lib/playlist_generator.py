@@ -22,9 +22,9 @@ Example output:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 
 @dataclass
@@ -84,9 +84,7 @@ class PlaylistGenerator:
         encoding = "utf-8" if format == "m3u8" else "ascii"
         # Strip non-ASCII for M3U format
         if format == "m3u":
-            lines = [
-                line.encode("ascii", "replace").decode("ascii") for line in lines
-            ]
+            lines = [line.encode("ascii", "replace").decode("ascii") for line in lines]
 
         output_path.write_text("\n".join(lines) + "\n", encoding=encoding)
         return len(entries_list)
@@ -95,6 +93,7 @@ class PlaylistGenerator:
 def _relpath(target: Path, start: Path) -> str:
     """Return a POSIX-style relative path from `start` to `target`."""
     import os
+
     rel = os.path.relpath(str(target), start=str(start))
     # Always use forward slashes in playlists for cross-platform portability
     return rel.replace("\\", "/")

@@ -67,7 +67,7 @@ def format_file_size(size_bytes: int) -> str:
     size_names = ["B", "KB", "MB", "GB", "TB"]
     i = 0
     while size_bytes >= 1024.0 and i < len(size_names) - 1:
-        size_bytes /= 1024.0
+        size_bytes = size_bytes / 1024.0  # type: ignore[assignment]
         i += 1
 
     return f"{size_bytes:.1f} {size_names[i]}"

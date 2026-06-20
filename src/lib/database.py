@@ -4,7 +4,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 
 from src.lib.config import get_config
@@ -21,7 +26,7 @@ _engine = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
-def _get_engine():
+def _get_engine() -> AsyncEngine:
     """Get or create the async engine."""
     global _engine
     if _engine is None:

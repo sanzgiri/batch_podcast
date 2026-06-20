@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 import aiohttp
 import feedparser
@@ -105,7 +106,7 @@ class RSSFeedParser:
         return entries
 
     @staticmethod
-    def _parse_date(raw) -> datetime | None:
+    def _parse_date(raw: Any) -> datetime | None:
         # feedparser exposes parsed dates as struct_time tuples.
         for key in ("published_parsed", "updated_parsed", "created_parsed"):
             t = raw.get(key)
@@ -117,7 +118,7 @@ class RSSFeedParser:
         return None
 
     @staticmethod
-    def _extract_content(raw) -> str | None:
+    def _extract_content(raw: Any) -> str | None:
         # Atom: <content type="html">...</content>; RSS: <content:encoded>
         content_list = raw.get("content")
         if content_list and isinstance(content_list, list):
@@ -125,7 +126,7 @@ class RSSFeedParser:
         return None
 
     @staticmethod
-    def _extract_summary(raw) -> str | None:
+    def _extract_summary(raw: Any) -> str | None:
         return raw.get("summary") or raw.get("description")
 
     def filter_entries(

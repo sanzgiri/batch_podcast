@@ -7,6 +7,7 @@ newsletter content and processing metadata.
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
@@ -71,7 +72,7 @@ class Newsletter(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize Newsletter instance."""
         # Generate content hash if not provided
         if "content" in kwargs and "content_hash" not in kwargs:
@@ -138,7 +139,7 @@ class Newsletter(Base):
             self.content_hash = generate_content_hash(extracted_content)
         self.updated_at = now_utc()
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert newsletter to dictionary for API responses."""
         return {
             "id": self.id,

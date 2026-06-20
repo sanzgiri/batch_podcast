@@ -6,12 +6,15 @@ middleware, and error handling.
 """
 
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.responses import Response
 
 from src.api.routes import newsletters
 from src.lib.config import get_config
@@ -23,7 +26,7 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     # Startup
     logger.info("Starting Newsletter Podcast Generator API")
@@ -80,11 +83,11 @@ def create_app() -> FastAPI:
     return app
 
 
-def add_error_handlers(app: FastAPI):
+def add_error_handlers(app: FastAPI) -> None:
     """Add custom error handlers."""
 
     @app.exception_handler(ValidationError)
-    async def validation_error_handler(_request: Request, exc: ValidationError):
+    async def validation_error_handler(_request: Request, exc: ValidationError) -> JSONResponse:
         logger.warning(f"Validation error: {exc}")
         return JSONResponse(
             status_code=400,
@@ -92,7 +95,7 @@ def add_error_handlers(app: FastAPI):
         )
 
     @app.exception_handler(ProcessingError)
-    async def processing_error_handler(_request: Request, exc: ProcessingError):
+    async def processing_error_handler(_request: Request, exc: ProcessingError) -> JSONResponse:
         logger.error(f"Processing error: {exc}")
         return JSONResponse(
             status_code=422,
@@ -100,7 +103,7 @@ def add_error_handlers(app: FastAPI):
         )
 
     @app.exception_handler(LLMError)
-    async def llm_error_handler(_request: Request, exc: LLMError):
+    async def llm_error_handler(_request: Request, exc: LLMError) -> JSONResponse:
         logger.error(f"LLM error: {exc}")
         return JSONResponse(
             status_code=503,
@@ -112,7 +115,7 @@ def add_error_handlers(app: FastAPI):
         )
 
     @app.exception_handler(TTSError)
-    async def tts_error_handler(_request: Request, exc: TTSError):
+    async def tts_error_handler(_request: Request, exc: TTSError) -> JSONResponse:
         logger.error(f"TTS error: {exc}")
         return JSONResponse(
             status_code=503,
@@ -124,14 +127,14 @@ def add_error_handlers(app: FastAPI):
         )
 
     @app.exception_handler(HTTPException)
-    async def http_exception_handler(_request: Request, exc: HTTPException):
+    async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": "HTTP Error", "message": exc.detail, "type": "http_error"},
         )
 
     @app.exception_handler(Exception)
-    async def general_exception_handler(_request: Request, exc: Exception):
+    async def general_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
         logger.error(f"Unhandled exception: {exc}", exc_info=True)
         return JSONResponse(
             status_code=500,
@@ -143,11 +146,11 @@ def add_error_handlers(app: FastAPI):
         )
 
 
-def add_middleware(app: FastAPI):
+def add_middleware(app: FastAPI) -> None:
     """Add custom middleware."""
 
     @app.middleware("http")
-    async def logging_middleware(request: Request, call_next):
+    async def logging_middleware(request: Request, call_next: Any) -> Response:
         """Log requests and responses."""
         start_time = time.time()
 
@@ -183,7 +186,7 @@ app = create_app()
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, Any]:
     """Basic health check endpoint."""
     return {
         "status": "healthy",
@@ -194,7 +197,7 @@ async def health_check():
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     """Root endpoint with API information."""
     return {
         "name": "Newsletter Podcast Generator API",
@@ -205,7 +208,7 @@ async def root():
     }
 
 
-def run_server():
+def run_server() -> None:
     """Run the development server."""
     config = get_config()
 

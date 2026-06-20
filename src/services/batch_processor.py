@@ -139,7 +139,7 @@ class BatchProcessor:
         # 5. Process in parallel with a semaphore
         semaphore = asyncio.Semaphore(self.max_parallel)
 
-        async def _process_one(candidate: BatchCandidate):
+        async def _process_one(candidate: BatchCandidate) -> None:
             async with semaphore:
                 try:
                     async with NewsletterProcessor(self.config) as processor:

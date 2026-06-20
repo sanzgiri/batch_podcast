@@ -159,7 +159,7 @@ class NewsletterProfile(BaseModel):
 
     def extract_metadata(self, url: str, content: str | None = None) -> dict[str, str | None]:
         """Extract metadata from URL and/or content."""
-        metadata = {
+        metadata: dict[str, str | None] = {
             "issue_number": None,
             "date": None,
             "title": None,

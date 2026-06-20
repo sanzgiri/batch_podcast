@@ -182,7 +182,23 @@ module = [
     "mutagen.*",
     "html2text.*",
     "feedparser.*",
-    "nltk.*"
+    "nltk.*",
+    "fastapi.*",
+    "uvicorn.*",
+    "pydantic.*",
+    "starlette.*",
+    "click.*",
+    "rich.*",
+    "sqlalchemy.*",
+    "aiohttp.*",
+    "bs4.*",
+    "openai.*",
+    "gradio.*",
+    "yaml.*",
+    "toml.*",
+    "dotenv.*",
+    "numpy.*",
+    "soundfile.*",
 ]
 ignore_missing_imports = true
 

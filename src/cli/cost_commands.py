@@ -19,7 +19,7 @@ console = Console()
 
 
 @click.group()
-def costs():
+def costs() -> None:
     """View processing costs and usage statistics."""
     pass
 
@@ -29,27 +29,27 @@ def costs():
 @click.option("--from", "from_date", help="Start date (YYYY-MM-DD)")
 @click.option("--to", "to_date", help="End date (YYYY-MM-DD)")
 @click.option("--limit", default=10, help="Number of episodes to show")
-def summary(newsletter, from_date, to_date, limit):
+def summary(newsletter: str | None, from_date: str | None, to_date: str | None, limit: int) -> None:
     """Show cost summary."""
     asyncio.run(_show_cost_summary(newsletter, from_date, to_date, limit))
 
 
 @costs.command()
 @click.argument("episode_id")
-def episode(episode_id):
+def episode(episode_id: str) -> None:
     """Show detailed cost breakdown for an episode."""
     asyncio.run(_show_episode_costs(episode_id))
 
 
 @costs.command()
-def totals():
+def totals() -> None:
     """Show total costs across all processing."""
     asyncio.run(_show_total_costs())
 
 
 async def _show_cost_summary(
     newsletter_profile_id: str | None, from_date: str | None, to_date: str | None, limit: int
-):
+) -> None:
     """Show cost summary table."""
     async with get_db_session() as db:
         # Build query
@@ -123,7 +123,7 @@ async def _show_cost_summary(
         console.print(table)
 
 
-async def _show_episode_costs(episode_id: str):
+async def _show_episode_costs(episode_id: str) -> None:
     """Show detailed cost breakdown for an episode."""
     async with get_db_session() as db:
         episode = await db.get(Episode, episode_id)
@@ -168,7 +168,7 @@ async def _show_episode_costs(episode_id: str):
         console.print(table)
 
 
-async def _show_total_costs():
+async def _show_total_costs() -> None:
     """Show total costs across all processing."""
     async with get_db_session() as db:
         # Get total costs

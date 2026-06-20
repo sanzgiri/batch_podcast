@@ -7,6 +7,7 @@ coordinating content extraction, LLM summarization, TTS generation, and storage.
 
 import asyncio
 from datetime import datetime
+from types import TracebackType
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,7 @@ class NewsletterProcessor:
         self.llm_summarizer: LLMSummarizer | None = None
         self.tts_generator: TTSGenerator | None = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "NewsletterProcessor":
         """Async context manager entry - initialize all services."""
         try:
             # Initialize services as context managers
@@ -66,7 +67,12 @@ class NewsletterProcessor:
             await self.__aexit__(type(e), e, e.__traceback__)
             raise ProcessingError(f"Service initialization failed: {e}") from e
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit - cleanup all services."""
         try:
             if self.tts_generator:
@@ -118,7 +124,7 @@ class NewsletterProcessor:
 
         async with get_db_session() as db:
             # Create newsletter record
-            newsletter = Newsletter.from_url(url, user_id=user_id)
+            newsletter = Newsletter.from_url(url, _user_id=user_id)
 
             # Set profile information if available
             if newsletter_profile_id:
@@ -191,7 +197,7 @@ class NewsletterProcessor:
         async with get_db_session() as db:
             # Create newsletter record
             newsletter = Newsletter.from_text(
-                content=content, title=title, content_type=content_type, user_id=user_id
+                content=content, title=title, _content_type=content_type, _user_id=user_id
             )
             db.add(newsletter)
             await db.commit()
@@ -291,6 +297,9 @@ class NewsletterProcessor:
         processing_options: dict[str, Any] | None = None,
     ) -> None:
         """Internal method to run the complete processing pipeline."""
+        assert self.content_extractor is not None
+        assert self.llm_summarizer is not None
+        assert self.tts_generator is not None
         options = processing_options or {}
 
         # Apply profile-based processing options if profile exists
@@ -552,7 +561,9 @@ class NewsletterProcessor:
             raise ProcessingError(f"Processing pipeline failed: {e}") from e
 
     @staticmethod
-    def _format_episode_title(newsletter, profile, summary_response) -> str:
+    def _format_episode_title(
+        newsletter: Newsletter, profile: NewsletterProfile | None, summary_response: Any
+    ) -> str:
         """Build a human-friendly episode title for ID3 / feed display.
 
         Priority: LLM-generated title from the summary (if good) >
@@ -573,7 +584,7 @@ class NewsletterProcessor:
             return podcast_title
         return (newsletter.title or "Untitled Episode").strip()
 
-    async def _regenerate_feeds(self, profile_id: str, profile) -> None:
+    async def _regenerate_feeds(self, profile_id: str, profile: NewsletterProfile) -> None:
         """Rebuild the per-profile M3U playlist and RSS feed from all DB episodes.
 
         Best-effort: callers should wrap in try/except. This walks all

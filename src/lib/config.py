@@ -4,6 +4,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -102,7 +103,7 @@ class Config(BaseModel):
 def _substitute_env_vars(value: str) -> str:
     """Replace ${VAR} patterns with environment variable values."""
 
-    def replacer(match: re.Match) -> str:
+    def replacer(match: re.Match[str]) -> str:
         var_name = match.group(1)
         return os.environ.get(var_name, "")
 
@@ -120,16 +121,16 @@ def _process_env_vars(data: object) -> object:
     return data
 
 
-def _load_yaml_config(config_path: Path) -> dict:
+def _load_yaml_config(config_path: Path) -> dict[str, Any]:
     """Load and process a YAML config file."""
     if not config_path.exists():
         return {}
     with open(config_path) as f:
         data = yaml.safe_load(f) or {}
-    return _process_env_vars(data)
+    return _process_env_vars(data)  # type: ignore[return-value]
 
 
-def _build_config(raw: dict) -> Config:
+def _build_config(raw: dict[str, Any]) -> Config:
     """Build Config from raw YAML dict, remapping keys as needed."""
     # API config: merge from app, server, and security sections
     api_data = {}

@@ -90,9 +90,9 @@ async def _show_cost_summary(
         total_cost = 0.0
 
         for ep in episodes:
-            llm_cost = ep.llm_cost or 0.0
-            tts_cost = ep.tts_cost or 0.0
-            ep_total_cost = ep.total_cost or 0.0
+            llm_cost = float(ep.llm_cost or 0.0)
+            tts_cost = float(ep.tts_cost or 0.0)
+            ep_total_cost = float(ep.total_cost or 0.0)
 
             total_llm_cost += llm_cost
             total_tts_cost += tts_cost
@@ -190,21 +190,26 @@ async def _show_total_costs() -> None:
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="white")
 
-        table.add_row("Total Episodes Processed", f"{row.count or 0:,}")
+        episode_count: int = row[0] or 0
+        total_llm_val: float = float(row[1] or 0.0)
+        total_tts_val: float = float(row[2] or 0.0)
+        total_val: float = float(row[3] or 0.0)
+        total_tokens_val: int = int(row[4] or 0)
+        total_chars_val: int = int(row[5] or 0)
+
+        table.add_row("Total Episodes Processed", f"{episode_count:,}")
         table.add_row("", "")
-        table.add_row("Total LLM Tokens", f"{int(row.total_tokens or 0):,}")
-        table.add_row("Total LLM Cost", f"[green]${row.total_llm or 0.0:.4f}[/green]")
+        table.add_row("Total LLM Tokens", f"{total_tokens_val:,}")
+        table.add_row("Total LLM Cost", f"[green]${total_llm_val:.4f}[/green]")
         table.add_row("", "")
-        table.add_row("Total TTS Characters", f"{int(row.total_chars or 0):,}")
-        table.add_row("Total TTS Cost", f"[green]${row.total_tts or 0.0:.4f}[/green]")
+        table.add_row("Total TTS Characters", f"{total_chars_val:,}")
+        table.add_row("Total TTS Cost", f"[green]${total_tts_val:.4f}[/green]")
         table.add_row("", "")
-        table.add_row(
-            "[bold]Total Cost[/bold]", f"[bold green]${row.total or 0.0:.4f}[/bold green]"
-        )
+        table.add_row("[bold]Total Cost[/bold]", f"[bold green]${total_val:.4f}[/bold green]")
 
         # Calculate averages
-        if row.count and row.count > 0:
-            avg_cost = (row.total or 0.0) / row.count
+        if episode_count > 0:
+            avg_cost = total_val / episode_count
             table.add_row("Average Cost per Episode", f"${avg_cost:.4f}")
 
         console.print(table)
@@ -228,8 +233,10 @@ async def _show_total_costs() -> None:
         newsletter_table.add_column("Episodes", justify="right", style="white")
         newsletter_table.add_column("Total Cost", justify="right", style="green")
 
-        for row in newsletter_result:
-            profile_id = row.newsletter_profile_id or "uncategorized"
-            newsletter_table.add_row(profile_id, f"{row.count:,}", f"${row.total or 0.0:.4f}")
+        for nl_row in newsletter_result:
+            profile_id = str(nl_row[0] or "uncategorized")
+            newsletter_table.add_row(
+                profile_id, f"{nl_row[1]:,}", f"${float(nl_row[2] or 0.0):.4f}"
+            )
 
         console.print(newsletter_table)

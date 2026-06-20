@@ -116,7 +116,9 @@ class MP3Tagger:
                 audio.add_tags()
 
         tags = audio.tags
-        assert tags is not None
+        if tags is None:
+            logger.warning(f"Could not create tags for {audio_file}")
+            return
 
         # Clear existing frames we're about to set so re-tagging is clean.
         for frame_id in (
